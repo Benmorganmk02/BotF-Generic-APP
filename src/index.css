@@ -1,0 +1,83 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Source+Code+Pro:wght@300;400;500;600;700&display=swap");
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220.0000 14.7541% 11.9608%;
+    --foreground: 0 0% 89.8039%;
+
+    --card: 197.1429 6.9307% 19.8039%;
+    --card-foreground: 0 0% 89.8039%;
+
+    --popover: 197.1429 6.9307% 19.8039%;
+    --popover-foreground: 0 0% 89.8039%;
+
+    --primary: 246.9065 74.3316% 63.3333%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 274.6154 100% 25.4902%;
+    --secondary-foreground: 0 0% 89.8039%;
+
+    --muted: 0 0% 26.6667%;
+    --muted-foreground: 0 0% 63.9216%;
+
+    --accent: 218.5401 79.1908% 66.0784%;
+    --accent-foreground: 0 0% 89.8039%;
+
+    --destructive: 0 84.2365% 60.1961%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 26.6667%;
+    --input: 0 0% 26.6667%;
+    --ring: 246.9065 74.3316% 63.3333%;
+
+    --chart-1: 246.9065 74.3316% 63.3333%;
+    --chart-2: 282.2857 43.5685% 47.2549%;
+    --chart-3: 274.6154 100% 25.4902%;
+    --chart-4: 218.5401 79.1908% 66.0784%;
+    --chart-5: 207.2727 44% 49.0196%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 220.0000 14.7541% 11.9608%;
+    --sidebar-foreground: 0 0% 89.8039%;
+    --sidebar-primary: 246.9065 74.3316% 63.3333%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 218.5401 79.1908% 66.0784%;
+    --sidebar-accent-foreground: 0 0% 89.8039%;
+    --sidebar-border: 0 0% 26.6667%;
+    --sidebar-ring: 246.9065 74.3316% 63.3333%;
+
+    --font-sans: 'Montserrat', sans-serif;
+    --font-mono: 'Source Code Pro', monospace;
+    --shadow-x: 0px;
+    --shadow-y: 1px;
+    --shadow-blur: 2px;
+    --shadow-spread: 0px;
+    --shadow-opacity: 0.05;
+    --shadow-color: #000000;
+    --shadow-rgb: 0 0 0;
+
+    --shadow-2xs: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / calc(var(--shadow-opacity) * 0.5));
+    --shadow-xs: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / calc(var(--shadow-opacity) * 0.5));
+    --shadow-sm: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / var(--shadow-opacity)), var(--shadow-x) calc(var(--shadow-y) / 4) calc(var(--shadow-blur) / 2) calc(var(--shadow-spread) - 1px) rgb(var(--shadow-rgb) / var(--shadow-opacity));
+    --shadow: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / var(--shadow-opacity)), var(--shadow-x) calc(var(--shadow-y) / 2) calc(var(--shadow-blur) / 2) calc(var(--shadow-spread) - 1px) rgb(var(--shadow-rgb) / var(--shadow-opacity));
+    --shadow-md: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / var(--shadow-opacity)), var(--shadow-x) calc(var(--shadow-y) / 2) calc(var(--shadow-blur) * 2) calc(var(--shadow-spread) - 1px) rgb(var(--shadow-rgb) / var(--shadow-opacity));
+    --shadow-lg: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / var(--shadow-opacity)), var(--shadow-x) var(--shadow-y) calc(var(--shadow-blur) * 3) calc(var(--shadow-spread) - 1px) rgb(var(--shadow-rgb) / var(--shadow-opacity));
+    --shadow-xl: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / var(--shadow-opacity)), var(--shadow-x) calc(var(--shadow-y) * 2) calc(var(--shadow-blur) * 5) calc(var(--shadow-spread) - 1px) rgb(var(--shadow-rgb) / var(--shadow-opacity));
+    --shadow-2xl: var(--shadow-x) var(--shadow-y) var(--shadow-blur) var(--shadow-spread) rgb(var(--shadow-rgb) / calc(var(--shadow-opacity) * 2.5));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}

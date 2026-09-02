@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-07-16T04:22:41.852Z",
+  "integrations": {
+    "rpg-character-manager": {
+      "idMappings": {
+        "base": "2a6cc4ad9991ef07",
+        "tables": {
+          "Users": "tv9aHje1HN9",
+          "Characters": "twJGc6bkrKR",
+          "FriendRequests": "tpfAh3gLXcx",
+          "Campaigns": "t6zp9i8ZTUs",
+          "CampaignCharacters": "tsU36GRKK74"
+        },
+        "fields": {
+          "Users": {
+            "email": "fskeToycSMg",
+            "firstName": "fxA3Tnip1NR",
+            "lastName": "fizu1QFcMHL",
+            "characters": "fap8E7pVQ1E",
+            "friendRequests": "fi8uVLRXVuZ",
+            "friendRequests1": "funogaCA8Zr",
+            "campaigns": "fbPJPyewgYN",
+            "campaignCharacters": "f4zb7czjgPh",
+            "campaigns11": "f7XFNVez7u1"
+          },
+          "Characters": {
+            "characterName": "fgiZvm1ApEK",
+            "owner": "frBQoZN5g9E",
+            "characterType": "f8aWaTeh9Qz",
+            "level": "fj7yZYjn4bp",
+            "characterData": "fssx9o8ihb3",
+            "sharedWith": "fdZ5BMf4c78",
+            "campaignCharacters": "fj7hwu8K3zg"
+          },
+          "FriendRequests": {
+            "requestId": "fvbKMmcJa8m",
+            "status": "f88PrbZb3c8",
+            "sender": "f4xxgCWyH6L",
+            "receiver": "fcy86g297Sc",
+            "receiverEmail": "f8sX3kifVu7"
+          },
+          "Campaigns": {
+            "campaignName": "f9VTE4s3ymb",
+            "gm": "fcqGnfwr8HY",
+            "campaignCharacters": "f4dz815mrYM",
+            "members": "f66sPAYc3D5"
+          },
+          "CampaignCharacters": {
+            "characterName": "fbvHgxrNK58",
+            "campaign": "fe5BhTsWDzs",
+            "originalCharacter": "fo7KuwbbeEW",
+            "player": "f4mcnDfGbMH",
+            "characterData": "f3NTP9Ggdck"
+          }
+        }
+      }
+    }
+  }
+}

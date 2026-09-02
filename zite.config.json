@@ -1,0 +1,25 @@
+{
+  "authentication": {
+    "signup": "open",
+    "authenticationMethods": {
+      "magicLink": true,
+      "googleSignIn": true,
+      "sso": false
+    }
+  },
+  "userSync": {
+    "enabled": true,
+    "integrationId": "rpg-character-manager",
+    "usersTableId": "tv9aHje1HN9",
+    "usersEmailFieldId": "fskeToycSMg",
+    "usersFirstNameFieldId": "fxA3Tnip1NR",
+    "usersLastNameFieldId": "fizu1QFcMHL"
+  },
+  "integrations": {
+    "rpg-character-manager": {
+      "type": "databases",
+      "connectionId": null,
+      "base": "RpgCharacterManager"
+    }
+  }
+}
