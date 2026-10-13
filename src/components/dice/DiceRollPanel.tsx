@@ -41,11 +41,20 @@ function LogEntry({ entry }: { entry: RollEntry }) {
               {entry.total} dmg
             </span>
           ) : (
-            <>
-              <span className="font-bold text-foreground">{entry.successes}</span>
-              <span className="text-muted-foreground ml-0.5">succ</span>
-              <span className="text-muted-foreground ml-2">Σ{entry.total}</span>
-            </>
+            entry.rollType === 'offense-defense' ? (
+              <>
+                <span className="font-bold text-foreground">{entry.offenseSuccesses}</span>
+                <span className="text-muted-foreground ml-0.5">off</span>
+                <span className="font-bold text-foreground ml-2">{entry.defenseSuccesses}</span>
+                <span className="text-muted-foreground ml-0.5">def</span>
+              </>
+            ) : (
+              <>
+                <span className="font-bold text-foreground">{entry.successes}</span>
+                <span className="text-muted-foreground ml-0.5">succ</span>
+                <span className="text-muted-foreground ml-2">Σ{entry.total}</span>
+              </>
+            )
           )}
         </div>
       </div>

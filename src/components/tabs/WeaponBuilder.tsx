@@ -139,7 +139,7 @@ export default function WeaponBuilder({ onSave, onCancel, initialWeapon }: Props
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          {initialWeapon ? 'Edit Weapon' : 'New Weapon'}
+          {initialWeapon ? 'Edit Weapon' : 'New Weapon (swords use Add Sword)'}
         </span>
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="adv-toggle">Advanced</Label>
@@ -168,7 +168,9 @@ export default function WeaponBuilder({ onSave, onCancel, initialWeapon }: Props
           <Select value={ht} onValueChange={v => changeHt(v as HandleType)}>
             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {HANDLE_TYPES.map(t => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+              {HANDLE_TYPES.filter(t => t.id !== 'sword' || initialWeapon?.handleType === 'sword').map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

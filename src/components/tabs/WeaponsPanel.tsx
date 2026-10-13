@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
 import type { Weapon, Bow, Crossbow } from '../../types/character';
 import WeaponBuilder from './WeaponBuilder';
+import SwordBuilder from './SwordBuilder';
+import SwordAttackRow from '../sheet/SwordAttackRow';
 import BowBuilder from './BowBuilder';
 import CrossbowBuilder from './CrossbowBuilder';
 import BowCard from './BowCard';
@@ -16,6 +18,9 @@ import {
   handednessLabel, getHandleTypeLabel, getHandleSizes, HEAD_CATEGORIES, parseDieSides,
 } from '../../utils/weaponData';
 import { getProfDice } from '../../utils/mechanics';
+import {
+  getSwordProfDef, getSwordThickness, getHeadStyleLabel, thicknessSummary, getWeaponProficiency,
+} from '../../utils/swordData';
 import RollButton from '../dice/RollButton';
 import DamageRollButton from '../dice/DamageRollButton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -26,6 +31,12 @@ function weaponSummaryLine(w: Weapon): string {
   const sizes = getHandleSizes(w.handleType as Parameters<typeof getHandleSizes>[0]);
   const sizeLabel = sizes.find(s => s.id === w.handleSize)?.label ?? w.handleSize;
   const sizeRange = sizes.find(s => s.id === w.handleSize)?.range ?? '';
+  if (w.swordProfKey) {
+    const blade = HEAD_CATEGORIES.find(c => c.id === 'swords')?.subTypes.find(s => s.id === w.heads[0]?.subType)?.label ?? '';
+    const thick = getSwordThickness(w.bladeThickness)?.label ?? '';
+    const style = getHeadStyleLabel(w.headStyle);
+    return `${getSwordProfDef(w.swordProfKey)?.name ?? 'Sword'} — ${sizeLabel} handle (${sizeRange}) · ${[blade, thick, style].filter(Boolean).join(' ')} blade`;
+  }
   const headParts = w.heads.map(h => {
     const catLabel = HEAD_CATEGORIES.find(c => c.id === h.category)?.label ?? h.category;
     const subLabel = HEAD_CATEGORIES.find(c => c.id === h.category)?.subTypes.find(s => s.id === h.subType)?.label ?? h.subType;
@@ -44,12 +55,14 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
 }) {
   const { character: c, setCharacter } = useChar();
   const weaponProfs = c.proficiencies.filter(p => p.profType === 'weapon' && !p.isForceSchool);
-  const linkedProf = weapon.linkedProficiencyId ? c.proficiencies.find(p => p.id === weapon.linkedProficiencyId) : undefined;
+  const linkedProf = getWeaponProficiency(c, weapon);
+  const swordDef = getSwordProfDef(weapon.swordProfKey);
+  const thickness = getSwordThickness(weapon.bladeThickness);
   const profDice = linkedProf ? getProfDice(c, linkedProf) : 0;
   const grip = weapon.handedness === '1h2h' ? (weapon.currentGrip ?? '1h') : weapon.handedness;
   const weaponMod = weapon.attackModOverride != null
     ? weapon.attackModOverride
-    : getWeaponModifier(weapon.classification, grip, weapon.weight);
+    : getWeaponModifier(weapon.swordProfKey ? 'martial' : weapon.classification, grip, weapon.weight);
   const totalAttackDice = profDice + weaponMod;
   const validHeads = weapon.heads.filter(h => h.category && h.subType);
 
@@ -74,11 +87,12 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-medium text-sm text-foreground">{weapon.name}</span>
-            <Badge variant={weapon.classification === 'martial' ? 'default' : 'outline'} className="text-xs">
-              {weapon.classification === 'martial' ? 'Martial' : 'Simple'}
+            <Badge variant={weapon.swordProfKey || weapon.classification === 'martial' ? 'default' : 'outline'} className="text-xs">
+              {weapon.swordProfKey || weapon.classification === 'martial' ? 'Martial' : 'Simple'}
             </Badge>
             <Badge variant="secondary" className="text-xs">{handednessLabel(weapon.handedness)}</Badge>
             {weapon.weight === 'heavy' && <Badge variant="destructive" className="text-xs">Heavy</Badge>}
+            {thickness && <Badge variant="outline" className="text-xs">{thicknessSummary(thickness)}</Badge>}
             {weapon.handedness === '1h2h' && (
               <div className="inline-flex rounded-md border border-border overflow-hidden ml-1">
                 <button onClick={() => toggleGrip('1h')} className={`px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${grip === '1h' ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}>1H</button>
@@ -115,7 +129,10 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
       </div>
 
       <div className="rounded bg-muted/30 border border-border/50 px-2.5 py-2 space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
+        {swordDef && linkedProf && (
+          <SwordAttackRow weapon={weapon} prof={linkedProf} profDice={profDice} weaponMod={weaponMod} grip={grip} />
+        )}
+        {!(swordDef && linkedProf) && <div className="flex items-center justify-between gap-2">
           <div className="text-xs">
             <span className="text-muted-foreground">Weapon Mod: </span>
             <span className="font-semibold text-foreground">+{weaponMod}d6</span>
@@ -129,10 +146,12 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
             {linkedProf ? (
               <RollButton label={`${weapon.name} Attack (${linkedProf.name})`} diceCount={totalAttackDice} size="sm" />
             ) : (
-              <span className="text-[10px] text-muted-foreground italic">Link prof for attack</span>
+              <span className="text-[10px] text-muted-foreground italic">
+                {swordDef ? `Take ${swordDef.name} to attack` : 'Link prof for attack'}
+              </span>
             )}
           </div>
-        </div>
+        </div>}
 
         {validHeads.map((h, i) => {
           const mult = getTotalMultiplierForHandedness(h.category, h.subType, grip);
@@ -164,24 +183,31 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
       <div className="flex items-center gap-2">
         {linkedProf ? <Link className="h-3 w-3 text-primary shrink-0" /> : <Unlink className="h-3 w-3 text-muted-foreground shrink-0" />}
         <span className="text-xs text-muted-foreground shrink-0">Proficiency:</span>
-        <Select value={weapon.linkedProficiencyId ?? '__none__'} onValueChange={linkProf}>
-          <SelectTrigger className="h-7 text-xs flex-1">
-            <SelectValue placeholder="Unlinked" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Unlinked</SelectItem>
-            {weaponProfs.map(p => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {swordDef ? (
+          <span className="text-xs font-medium text-foreground">
+            {swordDef.name}
+            {!linkedProf && <span className="text-muted-foreground font-normal"> (not taken yet)</span>}
+          </span>
+        ) : (
+          <Select value={weapon.linkedProficiencyId ?? '__none__'} onValueChange={linkProf}>
+            <SelectTrigger className="h-7 text-xs flex-1">
+              <SelectValue placeholder="Unlinked" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Unlinked</SelectItem>
+              {weaponProfs.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
-type BuilderMode = 'weapon' | 'bow' | 'crossbow' | null;
+type BuilderMode = 'sword' | 'weapon' | 'bow' | 'crossbow' | null;
 
 export default function WeaponsPanel() {
   const { character: c, setCharacter } = useChar();
@@ -232,14 +258,18 @@ export default function WeaponsPanel() {
 
   return (
     <div className="p-4 space-y-4">
+      {builderMode === 'sword' && <SwordBuilder onSave={saveWeapon} onCancel={cancelBuilder} initialWeapon={editingWeapon} />}
       {builderMode === 'weapon' && <WeaponBuilder onSave={saveWeapon} onCancel={cancelBuilder} initialWeapon={editingWeapon} />}
       {builderMode === 'bow' && <BowBuilder onSave={saveBow} onCancel={cancelBuilder} initialBow={editingBow} />}
       {builderMode === 'crossbow' && <CrossbowBuilder onSave={saveCrossbow} onCancel={cancelBuilder} initialCrossbow={editingCrossbow} />}
 
       {!builderMode && (
         <div className="flex gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="gap-1.5 h-9 flex-1 min-w-[100px]" onClick={() => setBuilderMode('sword')}>
+            <Plus className="h-4 w-4" /> Add Sword
+          </Button>
           <Button size="sm" variant="outline" className="gap-1.5 h-9 flex-1 min-w-[120px]" onClick={() => setBuilderMode('weapon')}>
-            <Plus className="h-4 w-4" /> Add Weapon
+            <Plus className="h-4 w-4" /> Add Other Weapon
           </Button>
           <Button size="sm" variant="outline" className="gap-1.5 h-9 flex-1 min-w-[100px]" onClick={() => setBuilderMode('bow')}>
             <Plus className="h-4 w-4" /> Add Bow
@@ -254,7 +284,7 @@ export default function WeaponsPanel() {
         <div className="space-y-3">
           {weapons.map((w, idx) => (
             <WeaponCard key={w.id} weapon={w}
-              onEdit={() => { setEditingWeapon(w); setBuilderMode('weapon'); }}
+              onEdit={() => { setEditingWeapon(w); setBuilderMode(w.swordProfKey ? 'sword' : 'weapon'); }}
               onDelete={() => deleteWeapon(w.id)}
               onMoveUp={idx > 0 ? () => moveWeapon(idx, -1) : undefined}
               onMoveDown={idx < weapons.length - 1 ? () => moveWeapon(idx, 1) : undefined}

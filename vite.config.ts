@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Character Manager',
-        short_name: 'Characters',
+        name: 'Blades of the Valorous',
+        short_name: 'BotV',
         description: 'Manage your tabletop RPG characters',
         theme_color: '#15161c',
         background_color: '#15161c',

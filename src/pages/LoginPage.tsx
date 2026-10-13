@@ -85,7 +85,7 @@ export default function LoginPage() {
               <Sword className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">RPG Character Manager</h1>
+          <h1 className="text-3xl font-bold text-foreground">Blades of the Valorous</h1>
           <p className="text-muted-foreground text-sm">Manage your homebrew tabletop RPG characters</p>
         </div>
 

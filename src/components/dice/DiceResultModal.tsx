@@ -62,10 +62,72 @@ function DamageBreakdown({ dice, dieResult, dieType, multiplier, afterMult, succ
   );
 }
 
+function OffenseDefenseBreakdown({ dice, defenseAdvDice, offenseSuccesses, defenseSuccesses }: {
+  dice: number[]; defenseAdvDice: number; offenseSuccesses: number; defenseSuccesses: number;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1.5">
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded border-2 border-primary inline-block shrink-0" />
+          Offense hit (4+)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded border-2 border-accent inline-block shrink-0" />
+          Defense hit (3+ on the first {defenseAdvDice})
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded border-2 border-primary bg-accent/30 inline-block shrink-0" />
+          Both
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded border border-border bg-muted inline-block shrink-0" />
+          Miss
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto py-1">
+        {dice.map((d, i) => {
+          const isAdvDie = i < defenseAdvDice;
+          const hitsOffense = d >= 4;
+          const hitsDefense = d >= (isAdvDie ? 3 : 4);
+          const style = hitsOffense && hitsDefense
+            ? 'border-primary bg-accent/30 text-primary'
+            : hitsOffense
+              ? 'border-primary bg-primary/20 text-primary'
+              : hitsDefense
+                ? 'border-accent bg-accent/20 text-accent-foreground'
+                : 'border-border bg-muted text-muted-foreground';
+          return (
+            <div key={i} className="relative">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold border-2 select-none ${style}`}>
+                {d}
+              </div>
+              {isAdvDie && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-accent border-2 border-background" />}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+        <div>
+          <span className="text-3xl font-bold text-primary">{offenseSuccesses}</span>
+          <span className="text-sm text-muted-foreground ml-2">offense</span>
+        </div>
+        <div className="text-right">
+          <span className="text-3xl font-bold text-foreground">{defenseSuccesses}</span>
+          <span className="text-sm text-muted-foreground ml-2">defense</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DiceResultModal() {
   const { currentRoll, clearCurrentRoll } = useDiceRoll();
   if (!currentRoll) return null;
 
+  const isCombined = currentRoll.rollType === 'offense-defense';
   const isDamage = currentRoll.rollType === 'damage';
   const dieType = currentRoll.dieType ?? 6;
   const t = currentRoll.effectiveThreshold ?? 4;
@@ -84,6 +146,11 @@ export default function DiceResultModal() {
                 <Badge variant="outline" className="text-xs">{currentRoll.dieCount ?? 1}×D{dieType}</Badge>
                 <Badge variant="destructive" className="text-xs">Damage</Badge>
               </>
+            ) : isCombined ? (
+              <>
+                <Badge variant="outline" className="text-xs">{currentRoll.diceCount}d6</Badge>
+                <Badge variant="secondary" className="text-xs">Offense + Defense</Badge>
+              </>
             ) : (
               <>
                 <Badge variant="outline" className="text-xs">{currentRoll.diceCount}d6</Badge>
@@ -98,7 +165,14 @@ export default function DiceResultModal() {
           </div>
         </DialogHeader>
 
-        {isDamage && currentRoll.dieResult != null ? (
+        {isCombined ? (
+          <OffenseDefenseBreakdown
+            dice={currentRoll.dice}
+            defenseAdvDice={currentRoll.defenseAdvDice ?? 0}
+            offenseSuccesses={currentRoll.offenseSuccesses ?? 0}
+            defenseSuccesses={currentRoll.defenseSuccesses ?? 0}
+          />
+        ) : isDamage && currentRoll.dieResult != null ? (
           <DamageBreakdown
             dice={currentRoll.dice}
             dieResult={currentRoll.dieResult}

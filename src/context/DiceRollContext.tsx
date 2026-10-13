@@ -27,8 +27,8 @@ export interface RollEntry {
   /** for ranged aim rolls: successes minus this = effective hits */
   aimDifficulty?: number;
   effectiveHits?: number;
-  /** 'attack' (default d6 threshold) | 'damage' (formula-based) */
-  rollType?: 'attack' | 'damage';
+  /** 'attack' (default d6 threshold) | 'damage' (formula-based) | 'offense-defense' (one pool read two ways) */
+  rollType?: 'attack' | 'damage' | 'offense-defense';
   /** Die sides for damage rolls (2, 4, 6, 8, 10, 12) */
   dieType?: number;
   /** Damage formula fields — only set when rollType === 'damage' */
@@ -37,6 +37,10 @@ export interface RollEntry {
   damageMultiplier?: number; // weapon multiplier (e.g. 2.5)
   damageSuccesses?: number;  // attack successes used
   damageAfterMult?: number;  // dieResult × multiplier (intermediate)
+  /** Offense + Defense roll — offense counts 4+, defense counts 3+ on the first N dice (4+ on the rest) */
+  offenseSuccesses?: number;
+  defenseSuccesses?: number;
+  defenseAdvDice?: number;   // N — how many dice get Advantage (3+) toward defense
 }
 
 interface DiceRollCtxType {
@@ -45,6 +49,8 @@ interface DiceRollCtxType {
   roll: (label: string, diceCount: number, advantage?: Advantage, extras?: RollExtras) => void;
   /** Roll damage: dieCount dice of dieSides summed, then (sum × multiplier × successes). dieCount defaults to 1. */
   rollDamage: (label: string, dieSides: number, multiplier: number, successes: number, dieCount?: number) => void;
+  /** Offense + Defense: a single roll read two ways — offense at 4+, defense at 3+ on the first defenseAdvDice dice */
+  rollCombined: (label: string, diceCount: number, defenseAdvDice: number) => void;
   clearCurrentRoll: () => void;
   clearLog: () => void;
 }
@@ -136,11 +142,37 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
     setLog(prev => [entry, ...prev].slice(0, 50));
   }, []);
 
+  const rollCombined = useCallback((label: string, diceCount: number, defenseAdvDice: number) => {
+    const count = Math.max(1, diceCount);
+    const advDice = Math.min(defenseAdvDice, count);
+    const dice = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
+    const offenseSuccesses = dice.filter(d => d >= 4).length;
+    const defenseSuccesses = dice.reduce((sum, d, i) => sum + (d >= (i < advDice ? 3 : 4) ? 1 : 0), 0);
+    const entry: RollEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      label,
+      diceCount: count,
+      advantage: 'normal',
+      effectiveThreshold: 4,
+      dice,
+      total: dice.reduce((a, b) => a + b, 0),
+      rolledSuccesses: offenseSuccesses,
+      successes: offenseSuccesses,
+      timestamp: Date.now(),
+      rollType: 'offense-defense',
+      offenseSuccesses,
+      defenseSuccesses,
+      defenseAdvDice: advDice,
+    };
+    setCurrentRoll(entry);
+    setLog(prev => [entry, ...prev].slice(0, 50));
+  }, []);
+
   const clearCurrentRoll = useCallback(() => setCurrentRoll(null), []);
   const clearLog = useCallback(() => { setLog([]); setCurrentRoll(null); }, []);
 
   return (
-    <DiceRollCtx.Provider value={{ log, currentRoll, roll, rollDamage, clearCurrentRoll, clearLog }}>
+    <DiceRollCtx.Provider value={{ log, currentRoll, roll, rollDamage, rollCombined, clearCurrentRoll, clearLog }}>
       {children}
     </DiceRollCtx.Provider>
   );

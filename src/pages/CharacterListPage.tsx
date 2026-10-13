@@ -84,7 +84,7 @@ export default function CharacterListPage() {
       <div className="border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sword className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">RPG Character Manager</h1>
+          <h1 className="text-lg font-bold text-foreground">Blades of the Valorous</h1>
         </div>
         <div className="flex items-center gap-2">
           {user ? (

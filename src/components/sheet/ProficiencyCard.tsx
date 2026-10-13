@@ -2,6 +2,11 @@ import { useChar } from '../../context/CharacterContext';
 import { Proficiency, ATTRIBUTE_INFO, SKILL_LABELS, AttributeKey, SkillKey, ATTRIBUTE_KEYS } from '../../types/character';
 import { getWeaponModifier, getWeaponModDisplay, getTotalMultiplierForHandedness, getMultiplierDisplay, getDamageDie, parseDieSides, HEAD_CATEGORIES } from '../../utils/weaponData';
 import DamageRollButton from '../dice/DamageRollButton';
+import SwordAttackRow from './SwordAttackRow';
+import {
+  getSwordProfDef, getSwordThickness, thicknessSummary, isWeaponLinkedToProficiency, MAX_SWORD_PROF_LEVEL,
+  getSwordBonusTotals, describeSwordTotals,
+} from '../../utils/swordData';
 import {
   getProfDice, calcCostToLevel, getAvailProfPts, getStatChangeCost,
   effAttr, effSkill,
@@ -19,14 +24,24 @@ interface Props { prof: Proficiency; index: number; onMoveUp?: () => void; onMov
 const SKILL_KEYS = Object.keys(SKILL_LABELS) as SkillKey[];
 
 function WeaponStatPickers({ prof, update }: { prof: Proficiency; update: (p: Partial<Proficiency>) => void }) {
+  const locked = getSwordProfDef(prof.swordKey)?.lockedPhysicalStat;
   return (
     <div className="grid grid-cols-2 gap-2">
       <div>
-        <p className="text-xs text-muted-foreground mb-1">Physical</p>
-        <Select value={prof.physicalStat ?? 'str'} onValueChange={v => update({ physicalStat: v as 'str' | 'dex' })}>
-          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="str">STR</SelectItem><SelectItem value="dex">DEX</SelectItem></SelectContent>
-        </Select>
+        {locked ? (
+          <>
+            <p className="text-xs text-muted-foreground mb-1">Physical (locked)</p>
+            <div className="h-7 px-2 flex items-center rounded-md border border-border bg-muted/40 text-xs text-muted-foreground">{locked.toUpperCase()}</div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground mb-1">Physical</p>
+            <Select value={prof.physicalStat ?? 'str'} onValueChange={v => update({ physicalStat: v as 'str' | 'dex' })}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="str">STR</SelectItem><SelectItem value="dex">DEX</SelectItem></SelectContent>
+            </Select>
+          </>
+        )}
       </div>
       <div>
         <p className="text-xs text-muted-foreground mb-1">Mental</p>
@@ -127,7 +142,7 @@ function buildCalcStr(
 
 function WeaponProfLink({ prof, profDice }: { prof: Proficiency; profDice: number }) {
   const { character: c } = useChar();
-  const linkedWeapons = (c.weapons ?? []).filter(w => w.linkedProficiencyId === prof.id);
+  const linkedWeapons = (c.weapons ?? []).filter(w => isWeaponLinkedToProficiency(w, prof));
 
   return (
     <div className="space-y-2 pt-1 border-t border-border/50">
@@ -139,7 +154,7 @@ function WeaponProfLink({ prof, profDice }: { prof: Proficiency; profDice: numbe
         const grip = weapon.handedness === '1h2h' ? (weapon.currentGrip ?? '1h') : weapon.handedness;
         const weaponMod = weapon.attackModOverride != null
           ? weapon.attackModOverride
-          : getWeaponModifier(weapon.classification, grip, weapon.weight);
+          : getWeaponModifier(weapon.swordProfKey ? 'martial' : weapon.classification, grip, weapon.weight);
         const totalDice = profDice + weaponMod;
         const validHeads = weapon.heads.filter(h => h.category && h.subType);
         return (
@@ -149,16 +164,27 @@ function WeaponProfLink({ prof, profDice }: { prof: Proficiency; profDice: numbe
                 <Link className="h-3 w-3 text-primary shrink-0" />
                 <span className="text-xs font-semibold text-foreground truncate">{weapon.name}</span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <span className="text-xs text-muted-foreground">
-                  Atk: <span className="font-bold text-foreground">{totalDice}d6</span>
-                </span>
-                <RollButton label={`${prof.name} + ${weapon.name}`} diceCount={totalDice} size="sm" />
+              {!weapon.swordProfKey && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs text-muted-foreground">
+                    Atk: <span className="font-bold text-foreground">{totalDice}d6</span>
+                  </span>
+                  <RollButton label={`${prof.name} + ${weapon.name}`} diceCount={totalDice} size="sm" />
+                </div>
+              )}
+            </div>
+            {weapon.swordProfKey ? (
+              <SwordAttackRow weapon={weapon} prof={prof} profDice={profDice} weaponMod={weaponMod} grip={grip} />
+            ) : (
+              <div className="text-[11px] text-muted-foreground font-mono">
+                Prof({profDice}d6) + Mod(+{weaponMod}d6)
               </div>
-            </div>
-            <div className="text-[11px] text-muted-foreground font-mono">
-              Prof({profDice}d6) + Mod(+{weaponMod}d6)
-            </div>
+            )}
+            {getSwordThickness(weapon.bladeThickness) && (
+              <div className="text-[11px] text-muted-foreground">
+                Blade: {getSwordThickness(weapon.bladeThickness)!.label} — {thicknessSummary(getSwordThickness(weapon.bladeThickness)!)}
+              </div>
+            )}
             {validHeads.map((h, i) => {
               const mult = getTotalMultiplierForHandedness(h.category, h.subType, grip);
               const multDisplay = getMultiplierDisplay(h.category, h.subType, grip);
@@ -219,7 +245,9 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
   const profDice = getProfDice(c, prof);
   const dice = profDice;
   const incCost = getStatChangeCost(prof.level, 1, prof.startingPrime);
-  const canInc = isGM || avail >= incCost;
+  const swordDef = getSwordProfDef(prof.swordKey);
+  const atLevelCap = !!swordDef && prof.level >= MAX_SWORD_PROF_LEVEL;
+  const canInc = (isGM || avail >= incCost) && !atLevelCap;
   const canDec = prof.level > 0;
   const calcStr = buildCalcStr(prof, profDice, c);
 
@@ -278,6 +306,27 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
         <p className="text-xs text-muted-foreground italic bg-muted/30 rounded px-2 py-1">
           Firearms weapon builder coming soon — proficiency tracked for future use.
         </p>
+      )}
+
+      {swordDef && (
+        <div className="rounded border border-border/60 bg-muted/20 px-2.5 py-2 space-y-1.5 text-xs">
+          <p className="text-foreground leading-relaxed">{swordDef.baseFeature}</p>
+          <p className="text-muted-foreground">
+            {prof.level === 0
+              ? 'Level 1 unlocks the bonuses below.'
+              : <>Total at Lv {prof.level} (levels stack): <span className="text-foreground">{describeSwordTotals(getSwordBonusTotals(swordDef, prof.level)).join(', ')}</span></>}
+          </p>
+          <details className="group">
+            <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">Gained at each level (max {MAX_SWORD_PROF_LEVEL}, cumulative)</summary>
+            <ul className="mt-1 space-y-0.5">
+              {swordDef.levels.map((txt, i) => (
+                <li key={i} className={prof.level >= i + 1 ? 'text-foreground' : 'text-muted-foreground/60'}>
+                  <span className="font-semibold">Lv {i + 1}:</span> {txt}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
       )}
 
       <div className="text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1.5 font-mono leading-relaxed break-words">{calcStr}</div>

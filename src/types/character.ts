@@ -40,6 +40,9 @@ export interface Proficiency {
   freeLevel?: number;
   isForceSchool?: boolean; isForceMastery?: boolean; autoLevel?: boolean;
   profType?: 'weapon' | 'vocation' | 'bow' | 'crossbow' | 'firearms';
+  /** Set when this is one of the fixed sword proficiencies (see swordData.ts) --
+   * name, stat lock, level cap and allowed weapon components all come from it. */
+  swordKey?: string;
   physicalStat?: 'str' | 'dex';
   /** wis | int for weapon/vocation, int | dex for bow */
   mentalStat?: 'wis' | 'int' | 'dex';
@@ -114,6 +117,12 @@ export interface Weapon {
   handedness: 'small' | '1h' | '2h' | '1h2h';
   weight: 'regular' | 'heavy';
   linkedProficiencyId?: string;
+  /** Sword builds only: the sword proficiency this weapon is locked to. */
+  swordProfKey?: string;
+  /** Sword builds only: blade thickness id (see SWORD_THICKNESSES). */
+  bladeThickness?: string;
+  /** Sword builds only: head style id (see HEAD_STYLES). */
+  headStyle?: string;
   advancedMode?: boolean;
   attackModOverride?: number;
   currentGrip?: '1h' | '2h';

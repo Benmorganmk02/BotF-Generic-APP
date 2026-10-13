@@ -1,4 +1,4 @@
-# ttrpg-character-sheet
+# Blades of the Valorous App (BotV App)
 
 ---
 
