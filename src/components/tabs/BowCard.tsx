@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Edit2, Trash2, Target, Link, Unlink, ChevronUp, ChevronDown, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import RollButton from '../dice/RollButton';
 import DamageRollButton from '../dice/DamageRollButton';
+import OpponentCounter from '../sheet/OpponentCounter';
 
 interface Props { bow: Bow; onEdit: () => void; onDelete: () => void; onMoveUp?: () => void; onMoveDown?: () => void; }
 
@@ -132,6 +133,8 @@ export default function BowCard({ bow, onEdit, onDelete, onMoveUp, onMoveDown }:
             <RollButton label={`${bow.name} — Attack`} diceCount={attackDice} size="sm" />
           </div>
         </div>
+
+        <OpponentCounter />
 
         {/* Damage */}
         <div className="flex items-center justify-between gap-2">

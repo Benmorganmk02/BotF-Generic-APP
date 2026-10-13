@@ -3,6 +3,7 @@ import { Proficiency, ATTRIBUTE_INFO, SKILL_LABELS, AttributeKey, SkillKey, ATTR
 import { getWeaponModifier, getWeaponModDisplay, getTotalMultiplierForHandedness, getMultiplierDisplay, getDamageDie, parseDieSides, HEAD_CATEGORIES } from '../../utils/weaponData';
 import DamageRollButton from '../dice/DamageRollButton';
 import SwordAttackRow from './SwordAttackRow';
+import OpponentCounter from './OpponentCounter';
 import {
   getSwordProfDef, getSwordThickness, thicknessSummary, isWeaponLinkedToProficiency, MAX_SWORD_PROF_LEVEL,
   getSwordBonusTotals, describeSwordTotals,
@@ -176,9 +177,12 @@ function WeaponProfLink({ prof, profDice }: { prof: Proficiency; profDice: numbe
             {weapon.swordProfKey ? (
               <SwordAttackRow weapon={weapon} prof={prof} profDice={profDice} weaponMod={weaponMod} grip={grip} />
             ) : (
-              <div className="text-[11px] text-muted-foreground font-mono">
-                Prof({profDice}d6) + Mod(+{weaponMod}d6)
-              </div>
+              <>
+                <div className="text-[11px] text-muted-foreground font-mono">
+                  Prof({profDice}d6) + Mod(+{weaponMod}d6)
+                </div>
+                <OpponentCounter />
+              </>
             )}
             {getSwordThickness(weapon.bladeThickness) && (
               <div className="text-[11px] text-muted-foreground">

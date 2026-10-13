@@ -4,8 +4,10 @@ import RollButton from '../dice/RollButton';
 import { Button } from '@/components/ui/button';
 import { Dices } from 'lucide-react';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { useCombat } from '../../context/CombatContext';
+import OpponentCounter from './OpponentCounter';
 import {
-  getSwordProfDef, getSwordBonusTotals, getSwordBonusDice, MAX_SWORD_PROF_LEVEL,
+  getSwordProfDef, getSwordBonusTotals, getSwordBonusDice, getExtraOpponentsCounted, MAX_SWORD_PROF_LEVEL,
 } from '../../utils/swordData';
 
 interface Props {
@@ -16,21 +18,6 @@ interface Props {
   grip: string;
 }
 
-function Seg({ options, value, onChange }: {
-  options: { id: string; label: string }[]; value: string; onChange: (id: string) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-md border border-border overflow-hidden">
-      {options.map(o => (
-        <button key={o.id} onClick={() => onChange(o.id)}
-          className={`px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${value === o.id ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** A sword's attack line: proficiency dice + weapon modifier + the proficiency's
  * stacked level bonuses for the current situation (grip, how many opponents,
  * flanked). Shared by the weapon card and the proficiency card so both roll
@@ -39,15 +26,13 @@ export default function SwordAttackRow({ weapon, prof, profDice, weaponMod, grip
   const { rollCombined } = useDiceRoll();
   const def = getSwordProfDef(weapon.swordProfKey ?? prof.swordKey);
   const totals = getSwordBonusTotals(def, prof.level);
-  const [target, setTarget] = useState<'single' | 'multiple'>('single');
+  const { opponents } = useCombat();
   const [flanked, setFlanked] = useState(false);
 
-  const bonus = getSwordBonusDice(totals, {
-    twoHanded: grip === '2h', single: target === 'single', multiple: target === 'multiple', flanked,
-  });
+  const bonus = getSwordBonusDice(totals, { twoHanded: grip === '2h', opponents });
   const total = profDice + weaponMod + bonus;
   const advLevels = flanked ? totals.flankedAdvantage : 0;
-  const hasTargetBonus = totals.diceSingle > 0 || totals.diceMulti > 0;
+  const countedOpponents = getExtraOpponentsCounted(totals, opponents);
 
   return (
     <div className="space-y-1.5">
@@ -67,22 +52,21 @@ export default function SwordAttackRow({ weapon, prof, profDice, weaponMod, grip
       <div className="text-[11px] text-muted-foreground font-mono">
         Prof({profDice}d6) + Weapon(+{weaponMod}d6) + {def?.name ?? 'Sword'} Lv{Math.min(prof.level, MAX_SWORD_PROF_LEVEL)}(+{bonus}d6)
       </div>
-      {(hasTargetBonus || totals.flankedAdvantage > 0) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {hasTargetBonus && (
-            <Seg
-              value={target}
-              onChange={v => setTarget(v as 'single' | 'multiple')}
-              options={[{ id: 'single', label: '1 opponent' }, { id: 'multiple', label: 'Multiple' }]}
-            />
-          )}
-          {totals.flankedAdvantage > 0 && (
-            <button onClick={() => setFlanked(f => !f)}
-              className={`px-1.5 py-0.5 rounded-md border border-border text-[10px] font-semibold transition-colors ${flanked ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}>
-              Flanked by 2 allies
-            </button>
-          )}
-        </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <OpponentCounter />
+        {totals.flankedAdvantage > 0 && (
+          <button onClick={() => setFlanked(f => !f)}
+            className={`px-1.5 py-0.5 rounded-md border border-border text-[10px] font-semibold transition-colors ${flanked ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}>
+            Flanked by 2 allies
+          </button>
+        )}
+      </div>
+      {totals.diceMulti > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {countedOpponents > 0
+            ? `+${totals.diceMulti}d6 × ${countedOpponents} extra opponent${countedOpponents === 1 ? '' : 's'} = +${totals.diceMulti * countedOpponents}d6${totals.multiTargetMax && opponents > totals.multiTargetMax ? ` (capped at ${totals.multiTargetMax} opponents total; more earn nothing extra)` : ''}`
+            : `Each extra opponent adds +${totals.diceMulti}d6${totals.multiTargetMax ? ` (up to ${totals.multiTargetMax} opponents total)` : ''}`}
+        </p>
       )}
       {totals.defenseAdvantageDice > 0 && (
         <div className="flex items-center gap-2 flex-wrap">

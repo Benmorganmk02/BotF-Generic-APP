@@ -4,6 +4,7 @@ import type { Weapon, Bow, Crossbow } from '../../types/character';
 import WeaponBuilder from './WeaponBuilder';
 import SwordBuilder from './SwordBuilder';
 import SwordAttackRow from '../sheet/SwordAttackRow';
+import OpponentCounter from '../sheet/OpponentCounter';
 import BowBuilder from './BowBuilder';
 import CrossbowBuilder from './CrossbowBuilder';
 import BowCard from './BowCard';
@@ -152,6 +153,8 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
             )}
           </div>
         </div>}
+
+        {!(swordDef && linkedProf) && <OpponentCounter />}
 
         {validHeads.map((h, i) => {
           const mult = getTotalMultiplierForHandedness(h.category, h.subType, grip);

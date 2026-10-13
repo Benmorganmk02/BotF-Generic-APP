@@ -23,14 +23,16 @@ export interface SwordLevelBonus {
   dice2H?: number;
   /** Extra attack dice against a single opponent. */
   diceSingle?: number;
-  /** Extra attack dice against multiple opponents. */
+  /** Extra attack dice PER OPPONENT when attacking two or more opponents (capped by multiTargetMax). */
   diceMulti?: number;
   /** "+N Challenge to Hit" -- tracked and shown, not yet resolved mechanically. */
   challenge?: number;
   /** "+N Advantage when flanked by two allies" (stacks as advantage levels). */
   flankedAdvantage?: number;
-  /** Greatsword: most opponents the multiple-opponent bonus covers at this level (latest level wins). */
-  multiTargetMax?: number;
+  /** Greatsword: most opponents the per-opponent bonus counts at this level (latest level wins;
+   * counts the first opponent, so 2 = the first plus one extra; null = no cap; leave undefined
+   * to keep the previous level's value). */
+  multiTargetMax?: number | null;
   /** Greatsword: number of defense dice that get Advantage at this level (latest level wins). */
   defenseAdvantageDice?: number;
 }
@@ -152,18 +154,18 @@ export const SWORD_PROFICIENCIES: SwordProfDef[] = [
     baseFeature:
       'Reach, High Defense, and target an additional opponent for free. Wild Attacks can hit through and will hit allies. Requires STR.',
     levels: [
-      '+1d6, +1d6 against multiple opponents, Advantage on 1 defense die',
-      '+1d6, +1d6 against multiple opponents (max of 3), Advantage on 3 defense dice',
-      '+1d6, +1d6 against multiple opponents (up to 4), Advantage on 5 defense dice',
-      '+1d6, +1d6 against multiple opponents (up to 5), Advantage on 7 defense dice',
-      '+1d6, +1d6 against multiple opponents, Advantage on 10 defense dice',
+      '+1d6, +1d6 per extra opponent (1 extra opponent), Advantage on 1 defense die',
+      '+1d6, +1d6 per extra opponent (up to 3 opponents total), Advantage on 3 defense dice',
+      '+1d6, +1d6 per extra opponent (up to 4 opponents total), Advantage on 5 defense dice',
+      '+1d6, +1d6 per extra opponent (up to 5 opponents total), Advantage on 7 defense dice',
+      '+1d6, +1d6 per extra opponent (no limit), Advantage on 10 defense dice',
     ],
     bonuses: [
-      { dice: 1, diceMulti: 1, defenseAdvantageDice: 1 },
+      { dice: 1, diceMulti: 1, multiTargetMax: 2, defenseAdvantageDice: 1 },
       { dice: 1, diceMulti: 1, multiTargetMax: 3, defenseAdvantageDice: 3 },
       { dice: 1, diceMulti: 1, multiTargetMax: 4, defenseAdvantageDice: 5 },
       { dice: 1, diceMulti: 1, multiTargetMax: 5, defenseAdvantageDice: 7 },
-      { dice: 1, diceMulti: 1, defenseAdvantageDice: 10 },
+      { dice: 1, diceMulti: 1, multiTargetMax: null, defenseAdvantageDice: 10 },
     ],
     lockedPhysicalStat: 'str',
     handles: ['long', 'great'],
@@ -249,6 +251,7 @@ export function getSwordBonusTotals(def: SwordProfDef | undefined, level: number
     totals.challenge += b.challenge ?? 0;
     totals.flankedAdvantage += b.flankedAdvantage ?? 0;
     if (b.multiTargetMax !== undefined) totals.multiTargetMax = b.multiTargetMax;
+    // Count-style fields use the highest unlocked level's value.
     if (b.defenseAdvantageDice !== undefined) totals.defenseAdvantageDice = b.defenseAdvantageDice;
   }
   return totals;
@@ -256,16 +259,29 @@ export function getSwordBonusTotals(def: SwordProfDef | undefined, level: number
 
 export interface SwordSituation {
   twoHanded: boolean;
-  /** Attacking exactly one opponent. */
-  single: boolean;
-  /** Attacking more than one opponent. */
-  multiple: boolean;
-  flanked: boolean;
+  /** How many opponents are being attacked (1 or more). */
+  opponents: number;
+}
+
+/** How many EXTRA opponents (beyond the first) earn the multi-opponent bonus.
+ * The level's cap is a total opponent count, so targeting more than the cap
+ * is allowed but earns nothing extra. */
+export function getExtraOpponentsCounted(t: SwordBonusTotals, opponents: number): number {
+  if (t.diceMulti === 0) return 0;
+  return Math.max(0, Math.min(opponents, t.multiTargetMax ?? opponents) - 1);
+}
+
+/** The multi-opponent bonus is paid per extra opponent; the first opponent only gets the normal bonus. */
+export function getMultiOpponentDice(t: SwordBonusTotals, opponents: number): number {
+  return t.diceMulti * getExtraOpponentsCounted(t, opponents);
 }
 
 /** Bonus attack dice from the proficiency's levels for this particular attack. */
 export function getSwordBonusDice(t: SwordBonusTotals, s: SwordSituation): number {
-  return t.dice + (s.twoHanded ? t.dice2H : 0) + (s.single ? t.diceSingle : 0) + (s.multiple ? t.diceMulti : 0);
+  return t.dice
+    + (s.twoHanded ? t.dice2H : 0)
+    + (s.opponents === 1 ? t.diceSingle : 0)
+    + getMultiOpponentDice(t, s.opponents);
 }
 
 /** Pieces of the totals as short labels, for display ("+3d6", "+1d6 if 2H", ...). */
@@ -274,7 +290,7 @@ export function describeSwordTotals(t: SwordBonusTotals): string[] {
   if (t.dice) out.push(`+${t.dice}d6`);
   if (t.dice2H) out.push(`+${t.dice2H}d6 if 2H`);
   if (t.diceSingle) out.push(`+${t.diceSingle}d6 vs a single opponent`);
-  if (t.diceMulti) out.push(`+${t.diceMulti}d6 vs multiple opponents${t.multiTargetMax ? ` (up to ${t.multiTargetMax})` : ''}`);
+  if (t.diceMulti) out.push(`+${t.diceMulti}d6 per extra opponent${t.multiTargetMax ? ` (up to ${t.multiTargetMax} opponents total)` : ''}`);
   if (t.challenge) out.push(`+${t.challenge} Challenge to Hit (automatic defense success${t.challenge === 1 ? '' : 'es'})`);
   if (t.flankedAdvantage) out.push(`+${t.flankedAdvantage} Advantage when flanked by two allies`);
   if (t.defenseAdvantageDice) out.push(`Advantage on ${t.defenseAdvantageDice} defense ${t.defenseAdvantageDice === 1 ? 'die' : 'dice'}`);

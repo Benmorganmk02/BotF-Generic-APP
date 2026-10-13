@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Character } from '../types/character';
 import { CharacterProvider } from '../context/CharacterContext';
 import { DiceRollProvider } from '../context/DiceRollContext';
+import { CombatProvider } from '../context/CombatContext';
 import { saveLocalCharacter } from '../utils/storage';
 import { getAvailAttrPts, getAvailSkillPts, getAvailAbilityPts, getAvailProfPts, getReactionCount } from '../utils/mechanics';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -67,6 +68,7 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
   return (
     <CharacterProvider character={character} setCharacter={setCharacter}>
       <DiceRollProvider>
+       <CombatProvider>
         <div className="min-h-screen bg-background flex flex-col">
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border">
             {/* Row 1: nav + name + save */}
@@ -143,6 +145,7 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
 
         <DiceRollPanel />
         <DiceResultModal />
+       </CombatProvider>
       </DiceRollProvider>
     </CharacterProvider>
   );
