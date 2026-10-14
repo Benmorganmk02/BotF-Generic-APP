@@ -5,7 +5,8 @@ import { setGuestMode } from '../utils/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Sword, LogIn, UserX } from 'lucide-react';
+import { LogIn, UserX } from 'lucide-react';
+import Crest from '../components/Crest';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
@@ -81,11 +82,9 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8 text-center">
         <div className="space-y-3">
           <div className="flex justify-center">
-            <div className="h-20 w-20 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center">
-              <Sword className="h-10 w-10 text-primary" />
-            </div>
+            <Crest className="emblem-glow h-32 w-32" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Blades of the Valorous</h1>
+          <h1 className="font-display text-3xl font-bold tracking-wider text-silver-sheen">Blades of the Valorous</h1>
           <p className="text-muted-foreground text-sm">Manage your homebrew tabletop RPG characters</p>
         </div>
 

@@ -9,6 +9,7 @@ const tailwindConfig: Config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
+        display: ["Cinzel", "Georgia", "serif"],
         mono: ["var(--font-mono)", ...defaultTheme.fontFamily.mono],
       },
       colors: {

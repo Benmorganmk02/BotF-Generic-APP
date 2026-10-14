@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Source+Code+Pro:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Montserrat:wght@300;400;500;600;700&family=Source+Code+Pro:wght@300;400;500;600;700&display=swap");
 
 
 @tailwind base;
@@ -6,51 +6,53 @@
 @tailwind utilities;
 
 @layer base {
+  /* Blades of the Valorous palette (same as the website): void/night/abyss
+     backgrounds, royal purples, polished silvers. */
   :root {
-    --background: 220.0000 14.7541% 11.9608%;
-    --foreground: 0 0% 89.8039%;
+    --background: 251 37% 3.7%;      /* void   #07060d */
+    --foreground: 224 21% 90%;       /* silver #dfe2ea */
 
-    --card: 197.1429 6.9307% 19.8039%;
-    --card-foreground: 0 0% 89.8039%;
+    --card: 254 41% 10.6%;           /* abyss  #151026 */
+    --card-foreground: 224 21% 90%;
 
-    --popover: 197.1429 6.9307% 19.8039%;
-    --popover-foreground: 0 0% 89.8039%;
+    --popover: 254 41% 10.6%;
+    --popover-foreground: 224 21% 90%;
 
-    --primary: 246.9065 74.3316% 63.3333%;
+    --primary: 256 60% 60%;          /* royal  #7c5cd6 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 274.6154 100% 25.4902%;
-    --secondary-foreground: 0 0% 89.8039%;
+    --secondary: 263 57% 20%;        /* royal  #2a1650 */
+    --secondary-foreground: 224 21% 90%;
 
-    --muted: 0 0% 26.6667%;
-    --muted-foreground: 0 0% 63.9216%;
+    --muted: 255 36% 16%;            /* #1d1633 */
+    --muted-foreground: 224 12% 65%; /* silver #9aa0b0 */
 
-    --accent: 218.5401 79.1908% 66.0784%;
-    --accent-foreground: 0 0% 89.8039%;
+    --accent: 263 50% 40%;           /* royal  #5a3399 */
+    --accent-foreground: 224 21% 95%;
 
     --destructive: 0 84.2365% 60.1961%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 26.6667%;
-    --input: 0 0% 26.6667%;
-    --ring: 246.9065 74.3316% 63.3333%;
+    --border: 252 25% 23%;
+    --input: 252 25% 23%;
+    --ring: 256 77% 75%;             /* royal  #a68cf0 */
 
-    --chart-1: 246.9065 74.3316% 63.3333%;
-    --chart-2: 282.2857 43.5685% 47.2549%;
-    --chart-3: 274.6154 100% 25.4902%;
-    --chart-4: 218.5401 79.1908% 66.0784%;
-    --chart-5: 207.2727 44% 49.0196%;
+    --chart-1: 256 60% 60%;
+    --chart-2: 256 77% 75%;
+    --chart-3: 263 50% 40%;
+    --chart-4: 222 17% 80%;
+    --chart-5: 261 56% 28%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 220.0000 14.7541% 11.9608%;
-    --sidebar-foreground: 0 0% 89.8039%;
-    --sidebar-primary: 246.9065 74.3316% 63.3333%;
+    --sidebar-background: 251 37% 3.7%;
+    --sidebar-foreground: 224 21% 90%;
+    --sidebar-primary: 256 60% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 218.5401 79.1908% 66.0784%;
-    --sidebar-accent-foreground: 0 0% 89.8039%;
-    --sidebar-border: 0 0% 26.6667%;
-    --sidebar-ring: 246.9065 74.3316% 63.3333%;
+    --sidebar-accent: 263 50% 40%;
+    --sidebar-accent-foreground: 224 21% 95%;
+    --sidebar-border: 252 25% 23%;
+    --sidebar-ring: 256 77% 75%;
 
     --font-sans: 'Montserrat', sans-serif;
     --font-mono: 'Source Code Pro', monospace;
@@ -77,7 +79,40 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    background: #07060d;
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+  ::selection {
+    background: rgba(124, 92, 214, 0.45);
+    color: #fff;
+  }
+}
+
+@layer components {
+  /* Polished-silver gradient text for titles (matches the website) */
+  .text-silver-sheen {
+    background: linear-gradient(180deg, #ffffff 0%, #dfe2ea 40%, #9aa0b0 75%, #dfe2ea 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .emblem-glow {
+    animation: emblem-glow 4.5s ease-in-out infinite;
+  }
+}
+
+@keyframes emblem-glow {
+  0%, 100% { filter: drop-shadow(0 0 14px rgba(124, 92, 214, 0.45)); }
+  50% { filter: drop-shadow(0 0 26px rgba(166, 140, 240, 0.8)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

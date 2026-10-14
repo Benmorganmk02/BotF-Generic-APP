@@ -7,6 +7,7 @@ import { getCharacters, saveCharacter, deleteCharacter } from '../lib/api/charac
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
 import FriendsTab from '../components/social/FriendsTab';
 import CampaignsTab from '../components/social/CampaignsTab';
+import Crest from '../components/Crest';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -83,8 +84,8 @@ export default function CharacterListPage() {
       {/* Header */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sword className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">Blades of the Valorous</h1>
+          <Crest className="h-9 w-9" />
+          <h1 className="font-display text-lg font-bold tracking-wider text-silver-sheen">Blades of the Valorous</h1>
         </div>
         <div className="flex items-center gap-2">
           {user ? (
