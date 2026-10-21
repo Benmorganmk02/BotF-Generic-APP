@@ -160,6 +160,8 @@ export interface Character {
   id: string; cloudId?: string;
   name: string; player: string; level: number;
   race: string; bodyType: string; age: string;
+  /** Picked in the create dialog (see data/worlds.ts): world id, archetype name ("Custom" when freely built), background name. */
+  world?: string; archetype?: string; background?: string;
   disablingCharacteristics: string; inherentCharacteristics: string;
   characterType: 'normal' | 'gm';
   berzerkActive: boolean; berzerkRound: number;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
 import { getAvailAttrPts, getAvailSkillPts, getAvailAbilityPts, getAvailProfPts, getHPMax } from '../../utils/mechanics';
 import { createDefaultCharacter } from '../../utils/defaults';
+import { getWorld } from '../../data/worlds';
 import PointPoolCard from '../sheet/PointPoolCard';
 import LevelUpModal from '../sheet/LevelUpModal';
 import ResetDialog from '../sheet/ResetDialog';
@@ -41,6 +42,7 @@ export default function CharacterInfoTab({ onReset }: { onReset?: () => void }) 
     setCharacter(p => ({
       ...fresh, id: p.id, cloudId: p.cloudId,
       name: p.name, player: p.player, race: p.race, bodyType: p.bodyType, age: p.age,
+      world: p.world, archetype: p.archetype, background: p.background,
       disablingCharacteristics: p.disablingCharacteristics, inherentCharacteristics: p.inherentCharacteristics,
       armor: p.armor, loadout: p.loadout, inventory: p.inventory, notes: p.notes,
     }));
@@ -64,6 +66,14 @@ export default function CharacterInfoTab({ onReset }: { onReset?: () => void }) 
   return (
     <div className="p-4 space-y-6">
       {isGM && <div className="rounded-lg bg-amber-500/20 border border-amber-500/40 px-4 py-2 text-sm text-amber-400 font-medium">⚠ GM/NPC Mode — Infinite points, no restrictions</div>}
+
+      {(c.world || c.archetype || c.background) && (
+        <div className="flex flex-wrap gap-2">
+          {c.world && <Badge variant="outline">{getWorld(c.world)?.name ?? c.world}</Badge>}
+          {c.archetype && <Badge variant="secondary">{c.archetype}</Badge>}
+          {c.background && <Badge variant="secondary">{c.background} background</Badge>}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {fields.map(({ key, label, placeholder }) => (

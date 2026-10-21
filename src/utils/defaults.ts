@@ -23,11 +23,13 @@ const defaultLoadout = { mainHand: '', offhand: '', back1: '', back2: '', back3:
 export function createDefaultCharacter(
   type: 'normal' | 'gm',
   name = 'New Character', player = '',
+  origin: { world?: string; archetype?: string; race?: string; background?: string } = {},
 ): Character {
   const profs: Proficiency[] = [];
 
   return {
-    id: genId(), name, player, level: 0, race: '', bodyType: '', age: '',
+    id: genId(), name, player, level: 0, race: origin.race ?? '', bodyType: '', age: '',
+    world: origin.world, archetype: origin.archetype, background: origin.background,
     disablingCharacteristics: '', inherentCharacteristics: '',
     characterType: type,
     berzerkActive: false, berzerkRound: 0,
