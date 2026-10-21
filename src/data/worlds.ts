@@ -6,7 +6,8 @@
  *  - a race is open to an archetype only if BOTH the archetype's `races` and the race's `archetypes` allow it
  *  - a background is open only if BOTH its `archetypes` and `races` match the chosen archetype and race
  *  - 'all' means no restriction
- * A custom hero skips these rules entirely: any race with any background. */
+ * A custom hero skips these crossover rules: any archetype with any race and any
+ * background (the archetype still gives its small benefit). */
 
 export type Allow = 'all' | string[];
 
@@ -44,8 +45,6 @@ const allows = (list: Allow, id: string) => list === 'all' || list.includes(id);
 
 export const raceAllowed = (a: Archetype, r: Race) => allows(a.races, r.id) && allows(r.archetypes, a.id);
 export const backgroundAllowed = (b: Background, a: Archetype, r: Race) => allows(b.archetypes, a.id) && allows(b.races, r.id);
-
-export const CUSTOM_ARCHETYPE = 'Custom';
 
 export const WORLDS: World[] = [
   {

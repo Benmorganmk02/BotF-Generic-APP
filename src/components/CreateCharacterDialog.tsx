@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createDefaultCharacter } from '../utils/defaults';
 import { Character } from '../types/character';
-import { WORLDS, CUSTOM_ARCHETYPE, getWorld, raceAllowed, backgroundAllowed } from '../data/worlds';
+import { WORLDS, getWorld, raceAllowed, backgroundAllowed } from '../data/worlds';
 
 interface Props { open: boolean; onClose: () => void; onCreate: (char: Character) => void; }
 
@@ -29,11 +29,10 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
 
   // Archetype heroes only see what crosses over with their archetype and race;
   // custom heroes can be any race with any background.
-  const races = mode === 'custom' ? world.races : archetype ? world.races.filter(r => raceAllowed(archetype, r)) : [];
+  const races = !archetype ? [] : mode === 'custom' ? world.races : world.races.filter(r => raceAllowed(archetype, r));
   const race = races.find(r => r.id === raceId);
-  const backgrounds = mode === 'custom'
-    ? world.backgrounds
-    : archetype && race ? world.backgrounds.filter(b => backgroundAllowed(b, archetype, race)) : [];
+  const backgrounds = !archetype || !race ? []
+    : mode === 'custom' ? world.backgrounds : world.backgrounds.filter(b => backgroundAllowed(b, archetype, race));
   const background = backgrounds.find(b => b.id === backgroundId);
 
   const reset = () => {
@@ -43,12 +42,12 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
   const clearPicks = () => { setArchetypeId(''); setRaceId(''); setBackgroundId(''); };
 
   const changeWorld = (id: string) => { setWorldId(id); clearPicks(); };
-  const changeMode = (m: Mode) => { setMode(m); clearPicks(); };
+  const changeMode = (m: Mode) => { setMode(m); setRaceId(''); setBackgroundId(''); };
   const changeArchetype = (id: string) => { setArchetypeId(id); setRaceId(''); setBackgroundId(''); };
   const changeRace = (id: string) => { setRaceId(id); setBackgroundId(''); };
 
   const complete = !hasContent || (
-    (mode === 'custom' || !!archetype)
+    !!archetype
     && (races.length === 0 || !!race)
     && (backgrounds.length === 0 || !!background)
   );
@@ -57,7 +56,7 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
     if (!complete) return;
     const char = createDefaultCharacter(type, name.trim() || 'New Character', player.trim(), {
       world: world.id,
-      archetype: hasContent ? (mode === 'custom' ? CUSTOM_ARCHETYPE : archetype?.name) : undefined,
+      archetype: archetype?.name,
       race: race?.name,
       background: background?.name,
     });
@@ -114,25 +113,23 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {mode === 'archetype'
-                    ? 'An archetype guides the kind of hero you are, and limits which races and backgrounds fit it.'
-                    : 'Any race with any background — no archetype restrictions.'}
+                    ? 'Your archetype limits which races and backgrounds fit it.'
+                    : 'Any archetype with any race and any background. The archetype you choose still gives its small benefit.'}
                 </p>
               </div>
 
-              {mode === 'archetype' && (
-                <div className="space-y-1">
-                  <Label>Archetype</Label>
-                  <Select value={archetypeId} onValueChange={changeArchetype}>
-                    <SelectTrigger><SelectValue placeholder="Choose an archetype..." /></SelectTrigger>
-                    <SelectContent>
-                      {world.archetypes.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {archetype?.guideline && <p className="text-xs text-muted-foreground">{archetype.guideline}</p>}
-                </div>
-              )}
+              <div className="space-y-1">
+                <Label>Archetype</Label>
+                <Select value={archetypeId} onValueChange={changeArchetype}>
+                  <SelectTrigger><SelectValue placeholder="Choose an archetype..." /></SelectTrigger>
+                  <SelectContent>
+                    {world.archetypes.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {archetype?.guideline && <p className="text-xs text-muted-foreground">{archetype.guideline}</p>}
+              </div>
 
-              {(mode === 'custom' || archetype) && (
+              {archetype && (
                 <div className="space-y-1">
                   <Label>Race</Label>
                   <Select value={raceId} onValueChange={changeRace}>
@@ -144,7 +141,7 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
                 </div>
               )}
 
-              {(mode === 'custom' || (archetype && race)) && (
+              {archetype && race && (
                 <div className="space-y-1">
                   <Label>Background</Label>
                   <Select value={backgroundId} onValueChange={setBackgroundId}>
