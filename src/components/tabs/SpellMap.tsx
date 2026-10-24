@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, coneTriangle, coneFromAim, conePool,
-  waveRadiusFor, tokenHit, tokenCenter, pointInToken, chainTargetCount, clamp,
+  waveRadiusFor, tokenHit, tokenCenter, pointInToken, chainTargetCount, chainHops, chainEligible, CHAIN_RANGE, clamp,
   type Point, type Token, type Square,
 } from '../../utils/spellGeometry';
 
@@ -23,7 +23,7 @@ interface Props {
   chainMana: number;
 }
 
-type Drag = { kind: 'caster' | 'aim' | 'token'; id?: string; dx: number; dy: number; moved: boolean; carryAim?: boolean; lastX?: number; lastY?: number };
+type Drag = { kind: 'caster' | 'aim' | 'token' | 'hop'; lastP?: Point; id?: string; dx: number; dy: number; moved: boolean; carryAim?: boolean; lastX?: number; lastY?: number };
 
 const snap = (v: number, step: number) => Math.round(v / step) * step;
 const px = (v: number) => v * CELL;
@@ -34,7 +34,9 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const [caster, setCaster] = useState<Token>({ id: 'caster', kind: 'caster', x: 3, y: 7 });
   const [aim, setAim] = useState<Point>({ x: 11, y: 8 });
   const [tokens, setTokens] = useState<Token[]>([]);
-  const [chainIds, setChainIds] = useState<string[]>([]);
+  // which enemy the player aimed each Chain jump at (index = jump); undefined = automatic nearest
+  const [hopOverrides, setHopOverrides] = useState<Array<string | undefined>>([]);
+  const [hopDrag, setHopDrag] = useState<{ index: number; p: Point } | null>(null);
   const nextId = useRef(1);
 
   const color = isHealing ? HEAL_COLOR : ELEMENT_COLORS[element] ?? '#a78bfa';
@@ -58,10 +60,9 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
 
   // ── Who is hit ──
   const primary = tokens.find(t => t.kind !== 'caster' && pointInToken(aim, t));
-  const chainTargets = chainIds
-    .map(id => tokens.find(t => t.id === id))
-    .filter((t): t is Token => !!t && t.kind === 'enemy' && t.id !== primary?.id)
-    .slice(0, chainCount);
+  const chainTargets = primary && primary.kind === 'enemy' && chainCount > 0
+    ? chainHops(primary, tokens.filter(t => t.kind === 'enemy'), chainCount, CHAIN_RANGE, hopOverrides)
+    : [];
   const hitIds = new Set<string>();
   if (primary) hitIds.add(primary.id);
   for (const t of chainTargets) hitIds.add(t.id);
@@ -91,6 +92,12 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
     if (!d) return;
     const p = toGrid(e);
     d.moved = true;
+    if (d.kind === 'hop') {
+      const hp = { x: p.x - d.dx, y: p.y - d.dy };
+      d.lastP = hp;
+      setHopDrag({ index: Number(d.id), p: hp });
+      return;
+    }
     if (d.kind === 'aim') {
       setAim({ x: clamp(snap(p.x - d.dx, 0.5), 0, GRID_W), y: clamp(snap(p.y - d.dy, 0.5), 0, GRID_H) });
       return;
@@ -108,12 +115,14 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const onUp = () => {
     const d = drag.current;
     drag.current = null;
-    // a tap (no drag) on an enemy picks it as a Chain hop
-    if (d && d.kind === 'token' && !d.moved && chainCount > 0) {
-      const t = tokens.find(x => x.id === d.id);
-      if (t && t.kind === 'enemy' && t.id !== primary?.id) {
-        setChainIds(ids => (ids.includes(t.id) ? ids.filter(i => i !== t.id) : ids.length < chainCount ? [...ids, t.id] : ids));
-      }
+    if (d?.kind === 'hop') {
+      const index = Number(d.id);
+      const target = d.moved && d.lastP && primary
+        ? tokens.find(t => t.kind === 'enemy' && pointInToken(d.lastP!, t) && chainEligible(primary, t))
+        : undefined;
+      // dropped on an eligible enemy: aim this jump there; dropped anywhere else: back to automatic
+      if (d.moved) setHopOverrides(o => { const next = [...o]; next[index] = target?.id; return next; });
+      setHopDrag(null);
     }
   };
 
@@ -125,7 +134,6 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   };
   const removeToken = (id: string) => {
     setTokens(ts => ts.filter(t => t.id !== id));
-    setChainIds(ids => ids.filter(i => i !== id));
   };
 
   const fillFor = (kind: Token['kind']) => (kind === 'enemy' ? '#7f1d1d' : kind === 'ally' ? '#14532d' : '#312e81');
@@ -133,7 +141,6 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
 
   const renderToken = (t: Token) => {
     const hit = hitIds.has(t.id);
-    const chainIndex = chainTargets.findIndex(c => c.id === t.id);
     const x = px(t.x), y = px(t.y), s = px(TOKEN_SIZE);
     return (
       <g key={t.id} onPointerDown={e => startDrag(e, t.kind === 'caster' ? 'caster' : 'token', { x: t.x, y: t.y }, t.id)} style={{ cursor: 'grab' }}>
@@ -141,9 +148,6 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
         <text x={x + s / 2} y={y + s / 2 + 4} textAnchor="middle" fontSize={11} fill="#fff" style={{ pointerEvents: 'none', userSelect: 'none' }}>
           {t.kind === 'caster' ? 'You' : t.kind === 'enemy' ? 'Foe' : 'Ally'}
         </text>
-        {chainIndex >= 0 && (
-          <text x={x + 8} y={y + 16} fontSize={11} fontWeight="bold" fill="#facc15" style={{ pointerEvents: 'none' }}>⛓{chainIndex + 1}</text>
-        )}
         {t.kind !== 'caster' && (
           <g onPointerDown={e => { e.stopPropagation(); removeToken(t.id); }} style={{ cursor: 'pointer' }}>
             <circle cx={x + s - 7} cy={y + 7} r={7} fill="#111827" stroke="#9ca3af" />
@@ -175,7 +179,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
         <div className="ml-auto flex gap-1.5 flex-wrap">
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('enemy')}>+ Enemy</Button>
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('ally')}>+ Ally</Button>
-          {tokens.length > 0 && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setTokens([]); setChainIds([]); }}>Clear</Button>}
+          {tokens.length > 0 && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setTokens([])}>Clear</Button>}
         </div>
       </div>
 
@@ -213,6 +217,17 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           {tokens.map(renderToken)}
           {renderToken(caster)}
 
+          {/* Chain jump markers: drag one onto another enemy to aim that jump yourself */}
+          {chainTargets.map((t, i) => {
+            const c = hopDrag?.index === i ? hopDrag.p : tokenCenter(t);
+            return (
+              <g key={`hop${i}`} onPointerDown={e => startDrag(e, 'hop', tokenCenter(t), String(i))} style={{ cursor: 'grab' }}>
+                <circle cx={px(c.x)} cy={px(c.y)} r={11} fill="#facc15" stroke="#111827" strokeWidth={1.5} />
+                <text x={px(c.x)} y={px(c.y) + 4} textAnchor="middle" fontSize={12} fontWeight="bold" fill="#111827" style={{ pointerEvents: 'none', userSelect: 'none' }}>{i + 1}</text>
+              </g>
+            );
+          })}
+
           {/* Aim marker */}
           <g onPointerDown={e => startDrag(e, 'aim', aim)} style={{ cursor: 'crosshair' }}>
             <circle cx={px(aim.x)} cy={px(aim.y)} r={14} fill="transparent" />
@@ -230,7 +245,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           {sweepText}
         </p>
         {chainCount > 0 && (
-          <p>Chain: aim at an enemy, then tap up to {chainCount} more enemies to hop to ({chainTargets.length}/{chainCount} chosen).</p>
+          <p>Chain: aim the marker at an enemy (the main target). Each jump (numbered yellow marker) goes to the nearest enemy within {CHAIN_RANGE} m of the main target on its own ({chainTargets.length}/{chainCount} found). Drag a jump marker onto a different enemy to aim it yourself, or drop it on empty ground to go back to automatic.</p>
         )}
         {tokens.length > 0 && (
           <p className="text-foreground">

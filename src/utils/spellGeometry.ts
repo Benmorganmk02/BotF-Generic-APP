@@ -33,26 +33,36 @@ function distToRect(p: Point, r: { x: number; y: number; w: number; h: number })
   return Math.hypot(dx, dy);
 }
 
-/** Blast: every square whose centre is within `radius` meters of the aim point. */
-export function blastSquares(aim: Point, radius: number): Set<Square> {
+/** An area spell only affects a grid square if it covers at least this share of the square. */
+export const MIN_COVER = 1 / 5;
+const SAMPLES = 12;
+
+/** Squares an area covers by at least MIN_COVER of their own area (measured by sampling a
+ * SAMPLES x SAMPLES grid inside each square). `exclude` squares are never included. */
+function coverageSquares(inside: (p: Point) => boolean, exclude?: Set<Square>): Set<Square> {
   const out = new Set<Square>();
+  const needed = MIN_COVER * SAMPLES * SAMPLES - 1e-9;
   for (const { x, y } of allSquares()) {
-    if (Math.hypot(x + 0.5 - aim.x, y + 0.5 - aim.y) <= radius + 1e-9) out.add(sq(x, y));
+    const s = sq(x, y);
+    if (exclude?.has(s)) continue;
+    let n = 0;
+    for (let i = 0; i < SAMPLES; i++) for (let j = 0; j < SAMPLES; j++) {
+      if (inside({ x: x + (i + 0.5) / SAMPLES, y: y + (j + 0.5) / SAMPLES })) n++;
+    }
+    if (n >= needed) out.add(s);
   }
   return out;
 }
 
-/** Wave: the ring of squares within `radius` meters of the caster's footprint (the footprint itself excluded). */
+/** Blast: the squares at least a third covered by a circle of `radius` meters around the aim point. */
+export function blastSquares(aim: Point, radius: number): Set<Square> {
+  return coverageSquares(p => Math.hypot(p.x - aim.x, p.y - aim.y) <= radius);
+}
+
+/** Wave: the ring around the caster's footprint out to `radius` meters (the footprint itself excluded). */
 export function waveSquares(caster: Pick<Token, 'x' | 'y'>, radius: number): Set<Square> {
   const rect = tokenRect(caster);
-  const own = new Set(tokenSquares(caster));
-  const out = new Set<Square>();
-  for (const { x, y } of allSquares()) {
-    const s = sq(x, y);
-    if (own.has(s)) continue;
-    if (distToRect({ x: x + 0.5, y: y + 0.5 }, rect) <= radius + 1e-9) out.add(s);
-  }
-  return out;
+  return coverageSquares(p => distToRect(p, rect) <= radius, new Set(tokenSquares(caster)));
 }
 
 /** Where a ray from the footprint's centre leaves the footprint. */
@@ -61,23 +71,6 @@ export function coneApex(caster: Pick<Token, 'x' | 'y'>, angle: number): Point {
   const dx = Math.cos(angle), dy = Math.sin(angle);
   const t = (TOKEN_SIZE / 2) / Math.max(Math.abs(dx), Math.abs(dy));
   return { x: c.x + dx * t, y: c.y + dy * t };
-}
-
-/** Do a triangle and an axis-aligned square overlap by more than a touch? (separating axis test) */
-function triangleTouchesSquare(tri: Point[], sx: number, sy: number) {
-  const square: Point[] = [{ x: sx, y: sy }, { x: sx + 1, y: sy }, { x: sx + 1, y: sy + 1 }, { x: sx, y: sy + 1 }];
-  const axes: Point[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }];
-  for (let i = 0; i < 3; i++) {
-    const p = tri[i], q = tri[(i + 1) % 3];
-    axes.push({ x: -(q.y - p.y), y: q.x - p.x });
-  }
-  for (const ax of axes) {
-    const len = Math.hypot(ax.x, ax.y) || 1;
-    const proj = (pts: Point[]) => pts.map(p => (p.x * ax.x + p.y * ax.y) / len);
-    const t = proj(tri), q = proj(square);
-    if (Math.max(...t) <= Math.min(...q) + 1e-9 || Math.max(...q) <= Math.min(...t) + 1e-9) return false;
-  }
-  return true;
 }
 
 /** The true cone shape: a pointed wedge from the footprint edge, `length` meters long
@@ -109,7 +102,7 @@ export interface ConeAim {
 
 /** Where the marker is decides the cone: its distance past the caster's edge is the cone's
  * length, and whatever is left of the pool becomes the width at the far end. A marker on top
- * of the caster turns it into a 360 degree wave. The length never goes below 0 or leaves
+ * of the caster turns it into a 360 degree wave. The length never goes below 0.5 m and leaves
  * at least 1 m for the width. */
 export function coneFromAim(caster: Pick<Token, 'x' | 'y'>, aim: Point, pool: number): ConeAim {
   const c = tokenCenter(caster);
@@ -121,14 +114,62 @@ export function coneFromAim(caster: Pick<Token, 'x' | 'y'>, aim: Point, pool: nu
   return { mode: 'cone', angle, length, width: Math.round((pool - length) * 2) / 2 };
 }
 
-/** Cone: every square the wedge touches is filled. */
+function pointInTriangle(p: Point, t: Point[]) {
+  const side = (a: Point, b: Point) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+  const d1 = side(t[0], t[1]), d2 = side(t[1], t[2]), d3 = side(t[2], t[0]);
+  const neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(neg && pos);
+}
+
+/** Samples per side inside each square when measuring a cone (finer than SAMPLES: a cone is thin near its tip). */
+const CONE_SAMPLES = 24;
+
+/** Cone: a square is hit when the wedge covers at least MIN_COVER of it. On top of that the cone always
+ * hits at least one square in every meter of its length: if no square in a 1 m slice reaches the
+ * MIN_COVER mark, the square the wedge fills the most within that slice is hit instead. */
 export function coneSquares(caster: Pick<Token, 'x' | 'y'>, angle: number, length: number, widthAtEnd: number): Set<Square> {
   const tri = coneTriangle(caster, angle, length, widthAtEnd);
+  const apex = tri[0];
+  const dx = Math.cos(angle), dy = Math.sin(angle);
   const own = new Set(tokenSquares(caster));
+  const slices = Math.max(1, Math.ceil(length - 1e-9));
+  const needed = MIN_COVER * CONE_SAMPLES * CONE_SAMPLES - 1e-9;
+
+  const minX = Math.floor(Math.min(...tri.map(p => p.x))), maxX = Math.ceil(Math.max(...tri.map(p => p.x)));
+  const minY = Math.floor(Math.min(...tri.map(p => p.y))), maxY = Math.ceil(Math.max(...tri.map(p => p.y)));
+
+  // For each square near the wedge: how many samples fall in the wedge, and in which 1 m slice.
+  const cells: Array<{ s: Square; total: number; perSlice: number[] }> = [];
+  for (let x = Math.max(0, minX); x < Math.min(GRID_W, maxX); x++) {
+    for (let y = Math.max(0, minY); y < Math.min(GRID_H, maxY); y++) {
+      const s = sq(x, y);
+      if (own.has(s)) continue;
+      const perSlice = new Array<number>(slices).fill(0);
+      let total = 0;
+      for (let i = 0; i < CONE_SAMPLES; i++) for (let j = 0; j < CONE_SAMPLES; j++) {
+        const p = { x: x + (i + 0.5) / CONE_SAMPLES, y: y + (j + 0.5) / CONE_SAMPLES };
+        if (!pointInTriangle(p, tri)) continue;
+        const along = (p.x - apex.x) * dx + (p.y - apex.y) * dy;
+        perSlice[Math.min(slices - 1, Math.max(0, Math.floor(along)))]++;
+        total++;
+      }
+      if (total > 0) cells.push({ s, total, perSlice });
+    }
+  }
+
   const out = new Set<Square>();
-  for (const { x, y } of allSquares()) {
-    const s = sq(x, y);
-    if (!own.has(s) && triangleTouchesSquare(tri, x, y)) out.add(s);
+  for (const c of cells) if (c.total >= needed) out.add(c.s);
+
+  for (let k = 0; k < slices; k++) {
+    if (cells.some(c => out.has(c.s) && c.perSlice[k] > 0)) continue;
+    let best: (typeof cells)[number] | undefined;
+    for (const c of cells) if (c.perSlice[k] > 0 && (!best || c.perSlice[k] > best.perSlice[k])) best = c;
+    if (best) { out.add(best.s); continue; }
+    // the wedge is thinner than the sampling here: take the square on the cone's axis in the middle of the slice
+    const mid = Math.min(k + 0.5, length);
+    const ax = Math.floor(apex.x + dx * mid), ay = Math.floor(apex.y + dy * mid);
+    const s = sq(ax, ay);
+    if (ax >= 0 && ax < GRID_W && ay >= 0 && ay < GRID_H && !own.has(s)) out.add(s);
   }
   return out;
 }
@@ -142,5 +183,46 @@ export const pointInToken = (p: Point, t: Pick<Token, 'x' | 'y'>) =>
 
 /** How many extra targets Chain jumps to: 2 for the first mana, +2 per extra mana. */
 export const chainTargetCount = (chainMana: number) => (chainMana > 0 ? 2 + (chainMana - 1) * 2 : 0);
+
+/** Chain range: how far from the main target the spell can reach, in meters. */
+export const CHAIN_RANGE = 15;
+
+const centreDist = (a: Token, b: Token) => { const p = tokenCenter(a), q = tokenCenter(b); return Math.hypot(p.x - q.x, p.y - q.y); };
+
+/** Can Chain reach this enemy? It must be someone other than the main target, within CHAIN_RANGE meters
+ * of the main target (centre to centre). */
+export const chainEligible = (primary: Token, enemy: Token, range = CHAIN_RANGE) =>
+  enemy.id !== primary.id && centreDist(primary, enemy) <= range + 1e-9;
+
+/** Chain: from the main target it jumps to the nearest eligible enemy, then on to the nearest remaining one
+ * from there, up to `count` jumps. `preferred[i]` is the enemy the player chose for jump i (by dragging its
+ * marker); it is used when still eligible, and the other jumps keep choosing the nearest automatically
+ * without taking an enemy another jump has been aimed at. */
+export function chainHops(primary: Token, enemies: Token[], count: number, range = CHAIN_RANGE, preferred: Array<string | undefined> = []): Token[] {
+  const pool = enemies.filter(e => chainEligible(primary, e, range));
+  const hops: Token[] = [];
+  let current = primary;
+  for (let i = 0; i < count; i++) {
+    let pick: Token | undefined;
+    const want = preferred[i];
+    if (want) {
+      const idx = pool.findIndex(e => e.id === want);
+      if (idx >= 0) pick = pool.splice(idx, 1)[0];
+    }
+    if (!pick) {
+      const reserved = new Set(preferred.slice(i + 1).filter((id): id is string => !!id));
+      let bi = -1;
+      for (let k = 0; k < pool.length; k++) {
+        if (reserved.has(pool[k].id)) continue;
+        if (bi < 0 || centreDist(current, pool[k]) < centreDist(current, pool[bi])) bi = k;
+      }
+      if (bi < 0) continue;
+      pick = pool.splice(bi, 1)[0];
+    }
+    hops.push(pick);
+    current = pick;
+  }
+  return hops;
+}
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
