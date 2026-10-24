@@ -86,8 +86,11 @@ export function coneTriangle(caster: Pick<Token, 'x' | 'y'>, angle: number, leng
 }
 
 /** Total reach a Wave/Cone modifier gives: length + width at the end, in meters.
- * 5 for the first mana (the base 4 m x 1 m cone), +2 per extra mana. */
-export const conePool = (mana: number) => (mana > 0 ? 5 + (mana - 1) * 2 : 0);
+ * 10 for the first mana, +2 per extra mana. */
+export const conePool = (mana: number) => (mana > 0 ? 10 + (mana - 1) * 2 : 0);
+
+/** A cone is never narrower than this at its far end, in meters. */
+export const MIN_CONE_WIDTH = 2;
 
 /** Wave radius (meters out from the caster's footprint): 1 for the first mana, +1 per extra mana. */
 export const waveRadiusFor = (mana: number) => (mana > 0 ? 1 + (mana - 1) : 0);
@@ -103,14 +106,14 @@ export interface ConeAim {
 /** Where the marker is decides the cone: its distance past the caster's edge is the cone's
  * length, and whatever is left of the pool becomes the width at the far end. A marker on top
  * of the caster turns it into a 360 degree wave. The length never goes below 0.5 m and leaves
- * at least 1 m for the width. */
+ * at least MIN_CONE_WIDTH for the width. */
 export function coneFromAim(caster: Pick<Token, 'x' | 'y'>, aim: Point, pool: number): ConeAim {
   const c = tokenCenter(caster);
   const angle = Math.atan2(aim.y - c.y, aim.x - c.x);
   if (pointInToken(aim, caster)) return { mode: 'wave', angle, length: 0, width: pool };
   const apex = coneApex(caster, angle);
   const reach = Math.hypot(aim.x - apex.x, aim.y - apex.y);
-  const length = clamp(Math.round(reach * 2) / 2, 0.5, Math.max(0.5, pool - 1));
+  const length = clamp(Math.round(reach * 2) / 2, 0.5, Math.max(0.5, pool - MIN_CONE_WIDTH));
   return { mode: 'cone', angle, length, width: Math.round((pool - length) * 2) / 2 };
 }
 
@@ -181,8 +184,8 @@ export const tokenHit = (t: Pick<Token, 'x' | 'y'>, squares: Set<Square>) => tok
 export const pointInToken = (p: Point, t: Pick<Token, 'x' | 'y'>) =>
   p.x >= t.x && p.x <= t.x + TOKEN_SIZE && p.y >= t.y && p.y <= t.y + TOKEN_SIZE;
 
-/** How many extra targets Chain jumps to: 2 for the first mana, +2 per extra mana. */
-export const chainTargetCount = (chainMana: number) => (chainMana > 0 ? 2 + (chainMana - 1) * 2 : 0);
+/** How many extra targets Chain jumps to: 1 per mana spent on it. */
+export const chainTargetCount = (chainMana: number) => Math.max(0, chainMana);
 
 /** Chain range: how far from the main target the spell can reach, in meters. */
 export const CHAIN_RANGE = 15;
