@@ -59,7 +59,7 @@ function Stepper({ value, onChange, min = 0, label }: { value: number; onChange:
 }
 
 // ── Compute actual modifier effect text ───────────────────────────────────────
-function computeModEffect(modId: string, manaSpent: number, coneLength: number, coneWidth: number): string {
+function computeModEffect(modId: string, manaSpent: number): string {
   const extra = manaSpent - 1; // first mana activates the base effect
   switch (modId) {
     case 'blast': {
@@ -72,7 +72,7 @@ function computeModEffect(modId: string, manaSpent: number, coneLength: number, 
     }
     case 'wave_cone': {
       const waveRadius = 1 + extra;
-      return `Wave: ${waveRadius} m out from you · Cone: ${coneLength} m long × ${coneWidth} m wide at the end`;
+      return `Wave: ${waveRadius} m out from you (marker on you = 360°) · Cone: ${5 + extra * 2} m total, where the marker reaches sets the length and the rest is the width at the end`;
     }
     case 'shield':
       return 'Shield effect (details TBD)';
@@ -94,7 +94,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   const [activeModifiers, setActiveModifiers] = useState<Record<string, number>>({});
   const [empowerMana, setEmpowerMana] = useState(0);
   // Cone splitter state: how much of the pool goes to length vs width
-  const [coneLengthRatio, setConeLengthRatio] = useState(4); // starting cone length in meters
 
   const selectedBolt = bolts.find(b => b.id === selectedBoltId);
   const isHealing = selectedBoltId === 'healing';
@@ -132,10 +131,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
 
   // Wave/Cone pool calculation
   const waveConeCount = activeModifiers['wave_cone'] ?? 0;
-  const waveConePool = waveConeCount > 0 ? 5 + (waveConeCount - 1) * 2 : 0; // meters: length + width at the end
-  // Clamp cone length to pool
-  const clampedConeLength = Math.min(Math.max(1, coneLengthRatio), Math.max(1, waveConePool - 1));
-  const coneWidth = waveConePool - clampedConeLength;
 
   let modMana = 0;
   interface ModSummary { id: string; label: string; effect: string; mana: number }
@@ -145,7 +140,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
     if (count > 0) {
       const cost = count * (mod.modifierManaCost ?? 1);
       modMana += cost;
-      const effect = computeModEffect(mod.id, count, clampedConeLength, coneWidth);
+      const effect = computeModEffect(mod.id, count);
       modSummaries.push({ id: mod.id, label: mod.name, effect, mana: cost });
     }
   }
@@ -238,36 +233,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
             <span className="text-[10px] text-muted-foreground">mana (+6 {isHealing ? 'HP' : 'dmg'} each)</span>
           </div>
 
-          {/* Cone length/width splitter — only when wave_cone is active */}
-          {waveConeCount > 0 && (
-            <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground">Cone Dimension Splitter</span>
-                <span className="text-[10px] text-muted-foreground">{waveConePool} m pool to distribute</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Length</span>
-                  <Stepper
-                    value={clampedConeLength}
-                    onChange={v => setConeLengthRatio(Math.min(Math.max(1, v), waveConePool - 1))}
-                    min={1}
-                  />
-                  <span className="text-xs font-bold text-foreground">{clampedConeLength} m</span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Width</span>
-                  <Stepper
-                    value={coneWidth}
-                    onChange={v => setConeLengthRatio(waveConePool - Math.min(Math.max(1, v), waveConePool - 1))}
-                    min={1}
-                  />
-                  <span className="text-xs font-bold text-foreground">{coneWidth} m</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Spell summary — stacked cards */}
           <div className="rounded-md bg-muted/30 border border-border p-3 space-y-2 text-xs">
             {/* Base bolt */}
@@ -351,7 +316,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                     setSelectedBoltId(null);
                     setActiveModifiers({});
                     setEmpowerMana(0);
-                    setConeLengthRatio(4);
                   }}
                 >
                   {canCast
@@ -373,8 +337,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
         blastMana={selectedBolt ? activeModifiers['blast'] ?? 0 : 0}
         waveConeMana={selectedBolt ? waveConeCount : 0}
         chainMana={selectedBolt ? activeModifiers['chain'] ?? 0 : 0}
-        coneLength={clampedConeLength}
-        coneWidth={coneWidth}
       />
     </div>
   );

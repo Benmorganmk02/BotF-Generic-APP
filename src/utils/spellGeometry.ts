@@ -80,16 +80,50 @@ function triangleTouchesSquare(tri: Point[], sx: number, sy: number) {
   return true;
 }
 
-/** Cone: a pointed wedge from the footprint edge, `length` meters long and `widthAtEnd`
- * meters wide at the far end. Every square the wedge touches is filled. */
-export function coneSquares(caster: Pick<Token, 'x' | 'y'>, angle: number, length: number, widthAtEnd: number): Set<Square> {
+/** The true cone shape: a pointed wedge from the footprint edge, `length` meters long
+ * and `widthAtEnd` meters wide at the far end. */
+export function coneTriangle(caster: Pick<Token, 'x' | 'y'>, angle: number, length: number, widthAtEnd: number): Point[] {
   const apex = coneApex(caster, angle);
   const dx = Math.cos(angle), dy = Math.sin(angle);
-  const tri: Point[] = [
+  return [
     apex,
     { x: apex.x + dx * length - dy * (widthAtEnd / 2), y: apex.y + dy * length + dx * (widthAtEnd / 2) },
     { x: apex.x + dx * length + dy * (widthAtEnd / 2), y: apex.y + dy * length - dx * (widthAtEnd / 2) },
   ];
+}
+
+/** Total reach a Wave/Cone modifier gives: length + width at the end, in meters.
+ * 5 for the first mana (the base 4 m x 1 m cone), +2 per extra mana. */
+export const conePool = (mana: number) => (mana > 0 ? 5 + (mana - 1) * 2 : 0);
+
+/** Wave radius (meters out from the caster's footprint): 1 for the first mana, +1 per extra mana. */
+export const waveRadiusFor = (mana: number) => (mana > 0 ? 1 + (mana - 1) : 0);
+
+export interface ConeAim {
+  /** 'wave' when the marker sits on top of the caster: the spell goes all the way around (360 degrees). */
+  mode: 'wave' | 'cone';
+  angle: number;
+  length: number;
+  width: number;
+}
+
+/** Where the marker is decides the cone: its distance past the caster's edge is the cone's
+ * length, and whatever is left of the pool becomes the width at the far end. A marker on top
+ * of the caster turns it into a 360 degree wave. The length never goes below 0 or leaves
+ * at least 1 m for the width. */
+export function coneFromAim(caster: Pick<Token, 'x' | 'y'>, aim: Point, pool: number): ConeAim {
+  const c = tokenCenter(caster);
+  const angle = Math.atan2(aim.y - c.y, aim.x - c.x);
+  if (pointInToken(aim, caster)) return { mode: 'wave', angle, length: 0, width: pool };
+  const apex = coneApex(caster, angle);
+  const reach = Math.hypot(aim.x - apex.x, aim.y - apex.y);
+  const length = clamp(Math.round(reach * 2) / 2, 0.5, Math.max(0.5, pool - 1));
+  return { mode: 'cone', angle, length, width: Math.round((pool - length) * 2) / 2 };
+}
+
+/** Cone: every square the wedge touches is filled. */
+export function coneSquares(caster: Pick<Token, 'x' | 'y'>, angle: number, length: number, widthAtEnd: number): Set<Square> {
+  const tri = coneTriangle(caster, angle, length, widthAtEnd);
   const own = new Set(tokenSquares(caster));
   const out = new Set<Square>();
   for (const { x, y } of allSquares()) {

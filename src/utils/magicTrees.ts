@@ -90,10 +90,10 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       element: 'Frost',
       isModifier: true,
       modifierManaCost: 1,
-      modifierEffect: 'Creates a 1 m wave around you OR a cone 4 m long and 1 m wide at the end (choose length/width)',
+      modifierEffect: 'Creates a 1 m wave around you (aim at yourself for a full 360°) OR a cone: 4 m long and 1 m wide at the end, reshaped by how far you aim',
       modifierScaling: '+1 m wave / +2 m of cone (length + width) per extra mana',
       requiresAbilityId: 'frost_bolt',
-      description: 'Requires Frost Bolt. Spend 1 mana to create a 1 m wave around you, or a cone 4 m long and 1 m wide at the end, choosing the length and width. Each additional mana increases the wave by 1 m and the cone by 2 m (split between length and width).',
+      description: 'Requires Frost Bolt. Spend 1 mana to create a 1 m wave around you, or a cone 4 m long and 1 m wide at the end. Aim at yourself for a full 360° wave. A cone has 5 m to spend between its length and its width at the end: aiming farther makes it longer and narrower, aiming nearer makes it shorter and wider. Each additional mana increases the wave by 1 m and the cone by 2 m.',
     },
     // ── Poison ──
     {

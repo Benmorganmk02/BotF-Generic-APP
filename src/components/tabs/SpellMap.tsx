@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, tokenHit, tokenCenter,
-  pointInToken, chainTargetCount, clamp, type Point, type Token, type Square,
+  GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, coneTriangle, coneFromAim, conePool,
+  waveRadiusFor, tokenHit, tokenCenter, pointInToken, chainTargetCount, clamp,
+  type Point, type Token, type Square,
 } from '../../utils/spellGeometry';
 
 const CELL = 28;
@@ -20,41 +21,40 @@ interface Props {
   blastMana: number;
   waveConeMana: number;
   chainMana: number;
-  /** Cone size in meters (from the builder's length/width splitter). */
-  coneLength: number;
-  coneWidth: number;
 }
 
-type Drag = { kind: 'caster' | 'aim' | 'token'; id?: string; dx: number; dy: number; moved: boolean };
+type Drag = { kind: 'caster' | 'aim' | 'token'; id?: string; dx: number; dy: number; moved: boolean; carryAim?: boolean; lastX?: number; lastY?: number };
 
 const snap = (v: number, step: number) => Math.round(v / step) * step;
+const px = (v: number) => v * CELL;
 
-export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana, coneLength, coneWidth }: Props) {
+export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const [caster, setCaster] = useState<Token>({ id: 'caster', kind: 'caster', x: 3, y: 7 });
   const [aim, setAim] = useState<Point>({ x: 11, y: 8 });
   const [tokens, setTokens] = useState<Token[]>([]);
-  const [shape, setShape] = useState<'wave' | 'cone'>('cone');
   const [chainIds, setChainIds] = useState<string[]>([]);
   const nextId = useRef(1);
 
   const color = isHealing ? HEAL_COLOR : ELEMENT_COLORS[element] ?? '#a78bfa';
   const blastRadius = blastMana > 0 ? 2 + (blastMana - 1) : 0;
-  const waveRadius = waveConeMana > 0 ? 1 + (waveConeMana - 1) : 0;
+  const pool = conePool(waveConeMana);
+  const waveRadius = waveRadiusFor(waveConeMana);
   const chainCount = chainTargetCount(chainMana);
 
   const casterC = tokenCenter(caster);
-  const angle = Math.atan2(aim.y - casterC.y, aim.x - casterC.x);
+  const cone = waveConeMana > 0 ? coneFromAim(caster, aim, pool) : null;
 
-  // ── Affected squares ──
-  const areas: Array<{ key: string; squares: Set<Square>; opacity: number }> = [];
-  if (blastMana > 0) areas.push({ key: 'blast', squares: blastSquares(aim, blastRadius), opacity: 0.45 });
-  if (waveConeMana > 0) {
-    areas.push(shape === 'wave'
-      ? { key: 'wave', squares: waveSquares(caster, waveRadius), opacity: 0.4 }
-      : { key: 'cone', squares: coneSquares(caster, angle, coneLength, coneWidth), opacity: 0.4 });
+  // ── The true shapes, and the grid squares each one touches ──
+  const squaresByKey: Record<string, Set<Square>> = {};
+  if (blastMana > 0) squaresByKey.blast = blastSquares(aim, blastRadius);
+  if (cone) {
+    squaresByKey.sweep = cone.mode === 'wave'
+      ? waveSquares(caster, waveRadius)
+      : coneSquares(caster, cone.angle, cone.length, cone.width);
   }
+  const areas = Object.values(squaresByKey);
 
   // ── Who is hit ──
   const primary = tokens.find(t => t.kind !== 'caster' && pointInToken(aim, t));
@@ -65,8 +65,8 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const hitIds = new Set<string>();
   if (primary) hitIds.add(primary.id);
   for (const t of chainTargets) hitIds.add(t.id);
-  for (const t of tokens) if (areas.some(a => tokenHit(t, a.squares))) hitIds.add(t.id);
-  const casterInArea = areas.some(a => tokenHit(caster, a.squares));
+  for (const t of tokens) if (areas.some(a => tokenHit(t, a))) hitIds.add(t.id);
+  const casterInArea = areas.some(a => tokenHit(caster, a));
   const enemiesHit = tokens.filter(t => t.kind === 'enemy' && hitIds.has(t.id)).length;
   const alliesHit = tokens.filter(t => t.kind === 'ally' && hitIds.has(t.id)).length;
 
@@ -79,7 +79,12 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
     e.stopPropagation();
     svgRef.current!.setPointerCapture(e.pointerId);
     const p = toGrid(e);
-    drag.current = { kind, id, dx: p.x - origin.x, dy: p.y - origin.y, moved: false };
+    drag.current = {
+      kind, id, dx: p.x - origin.x, dy: p.y - origin.y, moved: false,
+      // a marker sitting on top of the caster travels with them, so a 360 wave stays a 360 wave
+      carryAim: kind === 'caster' && pointInToken(aim, caster),
+      lastX: caster.x, lastY: caster.y,
+    };
   };
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -91,8 +96,14 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
       return;
     }
     const pos = { x: clamp(Math.round(p.x - d.dx), 0, GRID_W - TOKEN_SIZE), y: clamp(Math.round(p.y - d.dy), 0, GRID_H - TOKEN_SIZE) };
-    if (d.kind === 'caster') setCaster(c => ({ ...c, ...pos }));
-    else setTokens(ts => ts.map(t => (t.id === d.id ? { ...t, ...pos } : t)));
+    if (d.kind === 'caster') {
+      if (d.carryAim) {
+        const mx = pos.x - (d.lastX ?? pos.x), my = pos.y - (d.lastY ?? pos.y);
+        setAim(a => ({ x: a.x + mx, y: a.y + my }));
+      }
+      d.lastX = pos.x; d.lastY = pos.y;
+      setCaster(c => ({ ...c, ...pos }));
+    } else setTokens(ts => ts.map(t => (t.id === d.id ? { ...t, ...pos } : t)));
   };
   const onUp = () => {
     const d = drag.current;
@@ -123,7 +134,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const renderToken = (t: Token) => {
     const hit = hitIds.has(t.id);
     const chainIndex = chainTargets.findIndex(c => c.id === t.id);
-    const x = t.x * CELL, y = t.y * CELL, s = TOKEN_SIZE * CELL;
+    const x = px(t.x), y = px(t.y), s = px(TOKEN_SIZE);
     return (
       <g key={t.id} onPointerDown={e => startDrag(e, t.kind === 'caster' ? 'caster' : 'token', { x: t.x, y: t.y }, t.id)} style={{ cursor: 'grab' }}>
         <rect x={x + 2} y={y + 2} width={s - 4} height={s - 4} rx={8} fill={fillFor(t.kind)} stroke={hit ? '#ffffff' : strokeFor(t.kind)} strokeWidth={hit ? 3 : 1.5} />
@@ -144,7 +155,17 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   };
 
   const chainPath = [primary, ...chainTargets].filter((t): t is Token => !!t);
-  const hasArea = areas.length > 0;
+
+  // True shapes drawn under the shaded grid squares
+  const trueShapeProps = { fill: color, fillOpacity: 0.16, stroke: color, strokeWidth: 2, strokeOpacity: 0.95 };
+  const squareLayer = (key: string, squares: Set<Square>) => [...squares].map(s => {
+    const [sx, sy] = s.split(',').map(Number);
+    return <rect key={`${key}-${s}`} x={px(sx)} y={px(sy)} width={CELL} height={CELL} fill={color} fillOpacity={0.42} stroke={color} strokeOpacity={0.8} />;
+  });
+
+  const sweepText = !cone ? '' : cone.mode === 'wave'
+    ? ` Marker on you: a 360° wave, ${waveRadius} m out from you.`
+    : ` Cone: ${cone.length} m long, ${cone.width} m wide at the end (${pool} m total: the nearer the marker, the wider it gets).`;
 
   return (
     <div className="space-y-2">
@@ -152,16 +173,6 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
         <span className="text-xs font-semibold text-foreground">Spell Map</span>
         <span className="text-[10px] text-muted-foreground">1 square = 1 m · a medium creature fills 2×2</span>
         <div className="ml-auto flex gap-1.5 flex-wrap">
-          {waveConeMana > 0 && (
-            <div className="inline-flex rounded-md border border-border overflow-hidden">
-              {(['wave', 'cone'] as const).map(s => (
-                <button key={s} onClick={() => setShape(s)}
-                  className={`px-2 py-1 text-[11px] font-semibold capitalize ${shape === s ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('enemy')}>+ Enemy</Button>
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('ally')}>+ Ally</Button>
           {tokens.length > 0 && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setTokens([]); setChainIds([]); }}>Clear</Button>}
@@ -173,44 +184,50 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           style={{ touchAction: 'none' }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
           <rect x={0} y={0} width={GRID_W * CELL} height={GRID_H * CELL} fill="#0b0a14" />
           {Array.from({ length: GRID_W + 1 }, (_, i) => (
-            <line key={`v${i}`} x1={i * CELL} y1={0} x2={i * CELL} y2={GRID_H * CELL} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} />
+            <line key={`v${i}`} x1={px(i)} y1={0} x2={px(i)} y2={GRID_H * CELL} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} />
           ))}
           {Array.from({ length: GRID_H + 1 }, (_, i) => (
-            <line key={`h${i}`} x1={0} y1={i * CELL} x2={GRID_W * CELL} y2={i * CELL} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} />
+            <line key={`h${i}`} x1={0} y1={px(i)} x2={GRID_W * CELL} y2={px(i)} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} />
           ))}
 
-          {areas.map(a => [...a.squares].map(s => {
-            const [sx, sy] = s.split(',').map(Number);
-            return <rect key={`${a.key}-${s}`} x={sx * CELL} y={sy * CELL} width={CELL} height={CELL} fill={color} fillOpacity={a.opacity} stroke={color} strokeOpacity={0.7} />;
-          }))}
+          {/* 1. the true shapes */}
+          {blastMana > 0 && <circle cx={px(aim.x)} cy={px(aim.y)} r={px(blastRadius)} {...trueShapeProps} />}
+          {cone?.mode === 'cone' && (
+            <polygon points={coneTriangle(caster, cone.angle, cone.length, cone.width).map(p => `${px(p.x)},${px(p.y)}`).join(' ')} {...trueShapeProps} />
+          )}
+          {cone?.mode === 'wave' && (
+            <rect x={px(caster.x - waveRadius)} y={px(caster.y - waveRadius)} width={px(TOKEN_SIZE + waveRadius * 2)} height={px(TOKEN_SIZE + waveRadius * 2)}
+              rx={px(waveRadius)} {...trueShapeProps} />
+          )}
+
+          {/* 2. the grid squares they touch, on top */}
+          {Object.entries(squaresByKey).map(([key, squares]) => squareLayer(key, squares))}
 
           {/* Bolt line and Chain hops */}
-          <line x1={casterC.x * CELL} y1={casterC.y * CELL} x2={aim.x * CELL} y2={aim.y * CELL} stroke={color} strokeWidth={2} strokeDasharray="5 4" />
+          <line x1={px(casterC.x)} y1={px(casterC.y)} x2={px(aim.x)} y2={px(aim.y)} stroke={color} strokeWidth={2} strokeDasharray="5 4" />
           {chainPath.length > 1 && (
-            <polyline points={chainPath.map(t => { const c = tokenCenter(t); return `${c.x * CELL},${c.y * CELL}`; }).join(' ')}
+            <polyline points={chainPath.map(t => { const c = tokenCenter(t); return `${px(c.x)},${px(c.y)}`; }).join(' ')}
               fill="none" stroke="#facc15" strokeWidth={2.5} />
           )}
 
           {tokens.map(renderToken)}
           {renderToken(caster)}
 
-          {/* Aim point */}
+          {/* Aim marker */}
           <g onPointerDown={e => startDrag(e, 'aim', aim)} style={{ cursor: 'crosshair' }}>
-            <circle cx={aim.x * CELL} cy={aim.y * CELL} r={14} fill="transparent" />
-            <circle cx={aim.x * CELL} cy={aim.y * CELL} r={7} fill="none" stroke="#ffffff" strokeWidth={2} />
-            <line x1={aim.x * CELL - 11} y1={aim.y * CELL} x2={aim.x * CELL + 11} y2={aim.y * CELL} stroke="#ffffff" strokeWidth={1.5} />
-            <line x1={aim.x * CELL} y1={aim.y * CELL - 11} x2={aim.x * CELL} y2={aim.y * CELL + 11} stroke="#ffffff" strokeWidth={1.5} />
+            <circle cx={px(aim.x)} cy={px(aim.y)} r={14} fill="transparent" />
+            <circle cx={px(aim.x)} cy={px(aim.y)} r={7} fill="none" stroke="#ffffff" strokeWidth={2} />
+            <line x1={px(aim.x) - 11} y1={px(aim.y)} x2={px(aim.x) + 11} y2={px(aim.y)} stroke="#ffffff" strokeWidth={1.5} />
+            <line x1={px(aim.x)} y1={px(aim.y) - 11} x2={px(aim.x)} y2={px(aim.y) + 11} stroke="#ffffff" strokeWidth={1.5} />
           </g>
         </svg>
       </div>
 
       <div className="text-[11px] text-muted-foreground space-y-0.5">
         <p>
-          Drag <span className="text-foreground">You</span>, the foes/allies and the <span className="text-foreground">crosshair</span> (the aim point).
-          {blastMana > 0 && ` Blast: ${blastRadius} m radius around the crosshair.`}
-          {waveConeMana > 0 && (shape === 'wave'
-            ? ` Wave: ${waveRadius} m out from you.`
-            : ` Cone: ${coneLength} m long, ${coneWidth} m wide at the end, toward the crosshair.`)}
+          Drag <span className="text-foreground">You</span>, the foes/allies and the <span className="text-foreground">marker</span> (the crosshair).
+          {blastMana > 0 && ` Blast: ${blastRadius} m radius circle around the marker.`}
+          {sweepText}
         </p>
         {chainCount > 0 && (
           <p>Chain: aim at an enemy, then tap up to {chainCount} more enemies to hop to ({chainTargets.length}/{chainCount} chosen).</p>
@@ -218,7 +235,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
         {tokens.length > 0 && (
           <p className="text-foreground">
             {boltName}: {enemiesHit} enem{enemiesHit === 1 ? 'y' : 'ies'} hit · {alliesHit} all{alliesHit === 1 ? 'y' : 'ies'} {isHealing ? 'reached' : 'hit'}
-            {casterInArea && hasArea ? ' · you are inside the area' : ''}
+            {casterInArea && areas.length > 0 ? ' · you are inside the area' : ''}
           </p>
         )}
       </div>
