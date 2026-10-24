@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, coneTriangle, coneFromAim, conePool,
@@ -38,6 +39,8 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const [hopOverrides, setHopOverrides] = useState<Array<string | undefined>>([]);
   const [hopDrag, setHopDrag] = useState<{ index: number; p: Point } | null>(null);
   const nextId = useRef(1);
+  // The map starts folded away; token positions are kept while it is closed.
+  const [open, setOpen] = useState(false);
 
   const color = isHealing ? HEAL_COLOR : ELEMENT_COLORS[element] ?? '#a78bfa';
   const blastRadius = blastMana > 0 ? 2 + (blastMana - 1) : 0;
@@ -174,14 +177,20 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-foreground">Spell Map</span>
-        <span className="text-[10px] text-muted-foreground">1 square = 1 m · a medium creature fills 2×2</span>
-        <div className="ml-auto flex gap-1.5 flex-wrap">
+        <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+          className="flex items-center gap-1.5 rounded-md px-1 py-0.5 -ml-1 text-xs font-semibold text-foreground hover:bg-muted">
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          Spell Map {open ? '' : '(tap to open)'}
+        </button>
+        {open && <span className="text-[10px] text-muted-foreground">1 square = 1 m · a medium creature fills 2×2</span>}
+        {open && <div className="ml-auto flex gap-1.5 flex-wrap">
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('enemy')}>+ Enemy</Button>
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => addToken('ally')}>+ Ally</Button>
           {tokens.length > 0 && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setTokens([])}>Clear</Button>}
-        </div>
+        </div>}
       </div>
+
+      {open && (<>
 
       <div className="rounded-md border border-border bg-background overflow-hidden">
         <svg ref={svgRef} viewBox={`0 0 ${GRID_W * CELL} ${GRID_H * CELL}`} className="w-full h-auto block select-none"
@@ -254,6 +263,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           </p>
         )}
       </div>
+      </>)}
     </div>
   );
 }
