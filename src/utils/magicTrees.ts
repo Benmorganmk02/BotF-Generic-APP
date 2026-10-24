@@ -237,117 +237,65 @@ const MATERIAL_SCHOOL: MagicSchool = {
   ],
 };
 
-// ── School of the Zealot ──────────────────────────────────────────────────────
-const ZEALOT_SCHOOL: MagicSchool = {
-  id: 'zealot',
-  name: 'School of the Zealot',
-  icon: 'Flame',
-  elements: ['Holy', 'Faith'],
+// ── School of Runecraft (a sub-section of physical magic) ─────────────────────
+const RUNECRAFT_SCHOOL: MagicSchool = {
+  id: 'runecraft',
+  name: 'School of Runecraft',
+  icon: 'ScrollText',
+  elements: ['Inscribing', 'Transcribing', 'Matrices', 'Scribing'],
   abilities: [
-    // ── Holy ──
     {
-      id: 'zealot_smite',
-      name: 'Smite',
-      element: 'Holy',
-      description: 'Channel divine energy into a melee strike, dealing bonus radiant damage.',
+      id: 'rune_inscribing',
+      name: 'Inscribing Runes',
+      element: 'Inscribing',
+      description: 'Story prerequisites (not tracked by the app): knowing the runic language (the language of magic) and being able to use physical magic. Inscribing creates the pool of magic in a rune, etching the magic into it; any magic you have access to yourself can be imbued into a rune. Anyone can write, chisel or make runes, but only those who can inscribe can empower them. Opens three branches: Transcribing, Matrices and Scribing.',
     },
     {
-      id: 'zealot_bless',
-      name: 'Bless',
-      element: 'Holy',
-      description: 'Bestow a divine blessing on allies, granting them a bonus to attack and saving throws.',
+      id: 'rune_transcribing',
+      name: 'Transcribing',
+      element: 'Transcribing',
+      requiresAbilityId: 'rune_inscribing',
+      description: 'Requires Inscribing Runes. Imbue magic from external sources into your runes: other magic users, magical items and magical environments.',
     },
     {
-      id: 'zealot_consecrate',
-      name: 'Consecrate',
-      element: 'Holy',
-      description: 'Sanctify an area, creating hallowed ground that hinders enemies and bolsters allies.',
+      id: 'rune_matrices_1',
+      name: 'Matrices (Level 1)',
+      element: 'Matrices',
+      requiresAbilityId: 'rune_inscribing',
+      description: 'Requires Inscribing Runes. Combine inscribed runes or runestones into a more complex spell or effect, such as a fire rune and a blast rune for a fireball, or a lightning rune and a chain rune for chain lightning. Can create any spell effect of the School of Elements & Arcane. The runes used in the casting are destroyed.',
     },
     {
-      id: 'zealot_divine_wrath',
-      name: 'Divine Wrath',
-      element: 'Holy',
-      requiresAbilityId: 'zealot_smite',
-      description: 'Requires Smite. Unleash a devastating burst of divine fury, dealing massive radiant damage in an area.',
-    },
-    // ── Faith ──
-    {
-      id: 'zealot_fervor',
-      name: 'Fervor',
-      element: 'Faith',
-      description: 'Enter a state of religious fervor, increasing attack speed and resistance to fear effects.',
+      id: 'rune_matrices_2',
+      name: 'Matrices (Level 2)',
+      element: 'Matrices',
+      requiresAbilityId: 'rune_matrices_1',
+      description: 'Requires Matrices (Level 1). The runes are no longer destroyed in the casting.',
     },
     {
-      id: 'zealot_conviction',
-      name: 'Conviction',
-      element: 'Faith',
-      description: 'Strengthen your resolve and that of nearby allies, granting temporary hit points and resistance to mind effects.',
+      id: 'rune_matrices_3',
+      name: 'Matrices (Level 3)',
+      element: 'Matrices',
+      requiresAbilityId: 'rune_matrices_2',
+      description: 'Requires Matrices (Level 2). The runes no longer need to be held, but they must be on your person and easily accessible.',
     },
     {
-      id: 'zealot_condemnation',
-      name: 'Condemnation',
-      element: 'Faith',
-      description: 'Mark an enemy as condemned, reducing their defenses and causing them to take bonus damage from all sources.',
+      id: 'rune_scribing',
+      name: 'Scribing',
+      element: 'Scribing',
+      requiresAbilityId: 'rune_inscribing',
+      description: 'Requires Inscribing Runes. Quickly draw and empower a rune with a single use, to be cast later, such as creating a spell scroll. Takes less time than inscribing a magic item.',
+    },
+    {
+      id: 'rune_casting',
+      name: 'Casting',
+      element: 'Scribing',
+      requiresAbilityId: 'rune_scribing',
+      description: 'Requires Scribing. Quickly scribe simple runes to cast a magical effect on the spot, such as scribing a rune into the air to cast a Fire Bolt.',
     },
   ],
 };
 
-// ── School of the Druid ───────────────────────────────────────────────────────
-const DRUID_SCHOOL: MagicSchool = {
-  id: 'druid',
-  name: 'School of the Druid',
-  icon: 'Leaf',
-  elements: ['Nature', 'Beast'],
-  abilities: [
-    // ── Nature ──
-    {
-      id: 'druid_entangle',
-      name: 'Entangle',
-      element: 'Nature',
-      description: 'Cause roots and vines to burst from the ground, restraining enemies in the area.',
-    },
-    {
-      id: 'druid_thorns',
-      name: 'Thorns',
-      element: 'Nature',
-      description: 'Surround yourself or an ally with a barrier of thorns that damages attackers on contact.',
-    },
-    {
-      id: 'druid_growth',
-      name: 'Growth',
-      element: 'Nature',
-      description: 'Accelerate natural growth in an area, creating difficult terrain or restoring life to barren land.',
-    },
-    {
-      id: 'druid_bloom',
-      name: 'Bloom',
-      element: 'Nature',
-      requiresAbilityId: 'druid_growth',
-      description: 'Requires Growth. Cause an explosion of restorative flora, healing all allies in the area over time.',
-    },
-    // ── Beast ──
-    {
-      id: 'druid_beast_form',
-      name: 'Beast Form',
-      element: 'Beast',
-      description: 'Transform into a beast, gaining its physical attributes and natural weapons.',
-    },
-    {
-      id: 'druid_summon',
-      name: 'Summon Beast',
-      element: 'Beast',
-      description: 'Call forth a beast companion to fight alongside you for the duration of combat.',
-    },
-    {
-      id: 'druid_commune',
-      name: 'Commune with Nature',
-      element: 'Beast',
-      description: 'Attune to the natural world, gaining heightened senses and awareness of nearby creatures and terrain.',
-    },
-  ],
-};
-
-export const MAGIC_SCHOOLS: MagicSchool[] = [ELEMENTS_SCHOOL, MIND_SCHOOL, MATERIAL_SCHOOL, ZEALOT_SCHOOL, DRUID_SCHOOL];
+export const MAGIC_SCHOOLS: MagicSchool[] = [ELEMENTS_SCHOOL, MIND_SCHOOL, MATERIAL_SCHOOL, RUNECRAFT_SCHOOL];
 
 // ── Helper: check Storm prerequisite ──────────────────────────────────────────
 /** Lightning tree = lightning_bolt + chain. Full element tree = bolt + all its modifiers. */

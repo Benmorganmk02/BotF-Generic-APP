@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import {
   ChevronDown, ChevronRight, CheckCircle2, Lock, Circle,
   Flame, Zap, Snowflake, Skull, Sparkles, Brain, Hammer,
-  Minus, Plus, Heart, Leaf, BookOpen,
+  Minus, Plus, Heart, ScrollText,
 } from 'lucide-react';
 
 // ── Icon mapping ──────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ const SCHOOL_ICONS: Record<string, React.ReactNode> = {
   Flame: <Flame className="h-4 w-4 text-primary" />,
   Brain: <Brain className="h-4 w-4 text-primary" />,
   Hammer: <Hammer className="h-4 w-4 text-primary" />,
-  Leaf: <Leaf className="h-4 w-4 text-primary" />,
+  ScrollText: <ScrollText className="h-4 w-4 text-primary" />,
 };
 
 const ELEMENT_ICONS: Record<string, React.ReactNode> = {
@@ -30,10 +30,10 @@ const ELEMENT_ICONS: Record<string, React.ReactNode> = {
   Poison: <Skull className="h-3.5 w-3.5 text-secondary-foreground" />,
   Arcane: <Sparkles className="h-3.5 w-3.5 text-primary" />,
   Advanced: <Sparkles className="h-3.5 w-3.5 text-primary" />,
-  Holy: <Flame className="h-3.5 w-3.5 text-primary" />,
-  Faith: <BookOpen className="h-3.5 w-3.5 text-primary" />,
-  Nature: <Leaf className="h-3.5 w-3.5 text-secondary-foreground" />,
-  Beast: <Skull className="h-3.5 w-3.5 text-accent-foreground" />,
+  Inscribing: <ScrollText className="h-3.5 w-3.5 text-primary" />,
+  Transcribing: <ScrollText className="h-3.5 w-3.5 text-primary" />,
+  Matrices: <ScrollText className="h-3.5 w-3.5 text-primary" />,
+  Scribing: <ScrollText className="h-3.5 w-3.5 text-primary" />,
 };
 
 function normalizeAbility(a: string | AbilityEntry): AbilityEntry {
