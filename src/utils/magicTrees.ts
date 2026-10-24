@@ -149,7 +149,7 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       name: 'Advanced Molding (Level 3)',
       element: 'Molding',
       requiresAbilityId: 'spell_molding_2',
-      description: 'Requires Spell Molding (Level 2). Chain molding: after Chain you can choose a second shape, Blast or Wave, that follows the chain. It starts at the main target that was hit, and each extra mana carries it to one more chained hit, causing a second set of damage and hits. You pay mana for the Chain, then more mana for the follow-up shape.',
+      description: 'Requires Spell Molding (Level 2). Chain molding: after Chain you can choose a second shape, Blast or Cone, that follows the chain. It starts at the main target that was hit, and each extra mana carries it to one more chained hit, causing a second set of damage and hits. A follow-up Cone points away from where it was hit and is as long as it is wide. The follow-up shape can be enlarged up to 2 steps, 1 mana each. You pay mana for the Chain, then more mana for the follow-up shape.',
     },
     // ── Advanced ──
     {

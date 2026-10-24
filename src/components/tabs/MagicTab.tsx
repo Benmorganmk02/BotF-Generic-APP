@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { chainTargetCount, clamp } from '../../utils/spellGeometry';
+import { chainTargetCount, clamp, MAX_FOLLOW_SIZE, followBlastRadius, followConePool } from '../../utils/spellGeometry';
 import { useChar } from '../../context/CharacterContext';
 import { AbilityEntry } from '../../types/character';
 import { getAvailAbilityPts, getManaMax } from '../../utils/mechanics';
@@ -94,8 +94,9 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   const [selectedBoltId, setSelectedBoltId] = useState<string | null>(null);
   const [rawModifiers, setActiveModifiers] = useState<Record<string, number>>({});
   // Advanced molding: a second shape (Blast or Wave) that follows Chain, and how many chained hits it fires from
-  const [followShape, setFollowShape] = useState<'blast' | 'wave' | null>(null);
+  const [followShape, setFollowShape] = useState<'blast' | 'cone' | null>(null);
   const [followMana, setFollowMana] = useState(1);
+  const [followSize, setFollowSize] = useState(0);
   const [empowerMana, setEmpowerMana] = useState(0);
   // Cone splitter state: how much of the pool goes to length vs width
 
@@ -152,10 +153,11 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   // Advanced molding (level 3): Chain followed by a Blast or Wave
   const chainMana = activeModifiers['chain'] ?? 0;
   const chainJumps = chainTargetCount(chainMana);
-  const followOptions = ([{ id: 'blast', modId: 'blast', name: 'Blast' }, { id: 'wave', modId: 'wave_cone', name: 'Wave' }] as const)
+  const followOptions = ([{ id: 'blast', modId: 'blast', name: 'Blast' }, { id: 'cone', modId: 'wave_cone', name: 'Cone' }] as const)
     .filter(o => takenIds.has(o.modId));
   const followActive = moldingLevel >= 3 && chainMana > 0 && followShape !== null && followOptions.some(o => o.id === followShape);
   const followCount = followActive ? clamp(followMana, 1, chainJumps + 1) : 0;
+  const followSteps = followActive ? clamp(followSize, 0, MAX_FOLLOW_SIZE) : 0;
 
   let modMana = 0;
   interface ModSummary { id: string; label: string; effect: string; mana: number }
@@ -170,14 +172,15 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
     }
   }
   if (followActive && followShape) {
-    modMana += followCount;
-    const what = followShape === 'blast' ? 'a 2 m blast' : 'a 1 m wave';
+    modMana += followCount + followSteps;
+    const half = followConePool(followSteps) / 2;
+    const what = followShape === 'blast' ? `a ${followBlastRadius(followSteps)} m blast` : `a ${half} m × ${half} m cone (pointing away from where it was hit)`;
     const reach = followCount === 2 ? ' and the first chained hit' : followCount > 2 ? ` and the first ${followCount - 1} chained hits` : '';
     modSummaries.push({
       id: 'follow',
-      label: `Then ${followShape === 'blast' ? 'Blast' : 'Wave'}${followCount > 1 ? ` ×${followCount}` : ''}`,
-      effect: `Fires ${what} from the main target${reach}, ${isHealing ? 'healing' : 'dealing'} ${baseDmg + empowerDmg} ${isHealing ? 'HP' : 'damage'} again to everyone caught (a second set of hits)`,
-      mana: followCount,
+      label: `Then ${followShape === 'blast' ? 'Blast' : 'Cone'}${followCount > 1 ? ` ×${followCount}` : ''}${followSteps > 0 ? ` (size +${followSteps})` : ''}`,
+      effect: `Fires ${what}, starting at the main target${reach}, ${isHealing ? 'healing' : 'dealing'} ${baseDmg + empowerDmg} ${isHealing ? 'HP' : 'damage'} again to everyone caught (a second set of hits)`,
+      mana: followCount + followSteps,
     });
   }
   const totalMana = baseMana + empowerMana + modMana;
@@ -282,9 +285,10 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                         className={`px-2 py-1 rounded-md border text-xs ${followShape === o.id ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>{o.name}</button>
                     ))}
                     {followActive && <Stepper value={followCount} onChange={v => setFollowMana(clamp(v, 1, chainJumps + 1))} min={1} label="hits" />}
+                    {followActive && <Stepper value={followSteps} onChange={v => setFollowSize(clamp(v, 0, MAX_FOLLOW_SIZE))} min={0} label="size" />}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    1 mana fires it from the main target; each extra mana carries it to one more chained hit (up to {chainJumps + 1}). Each one deals the spell's damage again.
+                    1 mana fires it from the main target; each extra mana carries it to one more chained hit (up to {chainJumps + 1}). Each one deals the spell's damage again. Size: up to {MAX_FOLLOW_SIZE} steps, 1 mana each (+1 m blast radius, or a bigger cone). A follow-up Cone points away from where it was hit.
                   </p>
                 </>
               )}
@@ -383,6 +387,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                     setEmpowerMana(0);
                     setFollowShape(null);
                     setFollowMana(1);
+                    setFollowSize(0);
                   }}
                 >
                   {canCast
@@ -406,6 +411,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
         chainMana={selectedBolt ? activeModifiers['chain'] ?? 0 : 0}
         followShape={selectedBolt && followActive ? followShape : null}
         followCount={selectedBolt ? followCount : 0}
+        followSize={selectedBolt ? followSteps : 0}
       />
     </div>
   );

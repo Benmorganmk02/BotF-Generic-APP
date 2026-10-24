@@ -187,6 +187,13 @@ export const pointInToken = (p: Point, t: Pick<Token, 'x' | 'y'>) =>
 /** How many extra targets Chain jumps to: 1 per mana spent on it. */
 export const chainTargetCount = (chainMana: number) => Math.max(0, chainMana);
 
+/** Advanced molding follow-up shapes. A Blast starts 2 m in radius; a Cone starts 10 m in total, split
+ * evenly between its length and its width at the end (5 m x 5 m). Each size step (up to MAX_FOLLOW_SIZE)
+ * adds 1 m of blast radius or 2 m of cone total. */
+export const MAX_FOLLOW_SIZE = 2;
+export const followBlastRadius = (steps: number) => 2 + steps;
+export const followConePool = (steps: number) => 10 + steps * 2;
+
 /** Chain range: how far from the main target the spell can reach, in meters. */
 export const CHAIN_RANGE = 15;
 

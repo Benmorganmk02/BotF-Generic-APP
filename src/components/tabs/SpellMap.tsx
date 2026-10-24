@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, coneTriangle, coneFromAim, conePool,
-  waveRadiusFor, tokenHit, tokenCenter, pointInToken, chainTargetCount, chainHops, chainEligible, CHAIN_RANGE, clamp,
+  waveRadiusFor, followBlastRadius, followConePool, tokenHit, tokenCenter, pointInToken, chainTargetCount, chainHops, chainEligible, CHAIN_RANGE, clamp,
   type Point, type Token, type Square,
 } from '../../utils/spellGeometry';
 
@@ -23,8 +23,10 @@ interface Props {
   waveConeMana: number;
   chainMana: number;
   /** Advanced molding: a Blast or Wave that follows the Chain, and how many chained hits it fires from (the main target counts as the first). */
-  followShape: 'blast' | 'wave' | null;
+  followShape: 'blast' | 'cone' | null;
   followCount: number;
+  /** Size steps bought for the follow-up shape (0-2). */
+  followSize: number;
 }
 
 type Drag = { kind: 'caster' | 'aim' | 'token' | 'hop'; lastP?: Point; id?: string; dx: number; dy: number; moved: boolean; carryAim?: boolean; lastX?: number; lastY?: number };
@@ -33,10 +35,8 @@ const snap = (v: number, step: number) => Math.round(v / step) * step;
 const px = (v: number) => v * CELL;
 
 const FOLLOW_COLOR = '#fb923c';
-const FOLLOW_BLAST_RADIUS = 2;
-const FOLLOW_WAVE_RADIUS = 1;
 
-export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana, followShape, followCount }: Props) {
+export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana, followShape, followCount, followSize }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const [caster, setCaster] = useState<Token>({ id: 'caster', kind: 'caster', x: 3, y: 7 });
@@ -73,12 +73,25 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const chainTargets = primary && primary.kind === 'enemy' && chainCount > 0
     ? chainHops(primary, tokens.filter(t => t.kind === 'enemy'), chainCount, CHAIN_RANGE, hopOverrides)
     : [];
-  // Advanced molding: the follow-up shape fires from the main target, then from the first chained hits
-  const followSources = followShape && primary ? [primary, ...chainTargets].slice(0, followCount) : [];
+  // Advanced molding: the follow-up shape fires from the main target, then from the first chained hits.
+  // A follow-up Cone points away from where the spell came from: from the caster into the main target,
+  // and from the previous hit into each chained hit.
+  const followChain = primary ? [primary, ...chainTargets] : [];
+  const followBlastR = followBlastRadius(followSize);
+  const followHalf = followConePool(followSize) / 2;
+  const followShapes = (followShape ? followChain.slice(0, followCount) : []).map(src => {
+    const idx = followChain.indexOf(src);
+    const from = idx === 0 ? casterC : tokenCenter(followChain[idx - 1]);
+    const c = tokenCenter(src);
+    const angle = Math.atan2(c.y - from.y, c.x - from.x);
+    return { src, angle };
+  });
   const followSquares = new Set<Square>();
-  for (const src of followSources) {
-    const sq2 = followShape === 'blast' ? blastSquares(tokenCenter(src), FOLLOW_BLAST_RADIUS) : waveSquares(src, FOLLOW_WAVE_RADIUS);
-    sq2.forEach(s => followSquares.add(s));
+  for (const { src, angle } of followShapes) {
+    const squares = followShape === 'blast'
+      ? blastSquares(tokenCenter(src), followBlastR)
+      : coneSquares(src, angle, followHalf, followHalf);
+    squares.forEach(s => followSquares.add(s));
   }
   const hitIds = new Set<string>();
   if (primary) hitIds.add(primary.id);
@@ -232,12 +245,12 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           )}
 
           {/* Follow-up shapes (advanced molding), from the main target and the chained hits */}
-          {followSources.map(src => {
+          {followShapes.map(({ src, angle }) => {
             const c = tokenCenter(src);
             return followShape === 'blast'
-              ? <circle key={`fs-${src.id}`} cx={px(c.x)} cy={px(c.y)} r={px(FOLLOW_BLAST_RADIUS)} fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />
-              : <rect key={`fs-${src.id}`} x={px(src.x - FOLLOW_WAVE_RADIUS)} y={px(src.y - FOLLOW_WAVE_RADIUS)} width={px(TOKEN_SIZE + FOLLOW_WAVE_RADIUS * 2)} height={px(TOKEN_SIZE + FOLLOW_WAVE_RADIUS * 2)}
-                  rx={px(FOLLOW_WAVE_RADIUS)} fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />;
+              ? <circle key={`fs-${src.id}`} cx={px(c.x)} cy={px(c.y)} r={px(followBlastR)} fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />
+              : <polygon key={`fs-${src.id}`} points={coneTriangle(src, angle, followHalf, followHalf).map(p => `${px(p.x)},${px(p.y)}`).join(' ')}
+                  fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />;
           })}
 
           {/* 2. the grid squares they touch, on top */}
@@ -287,9 +300,9 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
         </p>
         {followShape && (
           <p>
-            Follow-up {followShape === 'blast' ? 'Blast' : 'Wave'} (orange): fires from the main target
+            Follow-up {followShape === 'blast' ? `Blast (${followBlastR} m radius)` : `Cone (${followHalf} m × ${followHalf} m, pointing away from where it was hit)`} (orange): fires from the main target
             {followCount === 2 ? ' and the first chained hit' : followCount > 2 ? ` and the first ${followCount - 1} chained hits` : ''}
-            {followSources.length === 0 ? ' — aim the marker at an enemy to start it.' : `. Hits: ${followEnemies} enem${followEnemies === 1 ? 'y' : 'ies'}, ${followAllies} all${followAllies === 1 ? 'y' : 'ies'} (a second set of damage).`}
+            {followShapes.length === 0 ? ' — aim the marker at an enemy to start it.' : `. Hits: ${followEnemies} enem${followEnemies === 1 ? 'y' : 'ies'}, ${followAllies} all${followAllies === 1 ? 'y' : 'ies'} (a second set of damage).`}
           </p>
         )}
         {chainCount > 0 && (
