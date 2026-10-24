@@ -36,7 +36,7 @@ const ELEMENTS_SCHOOL: MagicSchool = {
   id: 'elements_arcane',
   name: 'School of Elements & Arcane',
   icon: 'Flame',
-  elements: ['Fire', 'Lightning', 'Frost', 'Poison', 'Arcane', 'Advanced'],
+  elements: ['Fire', 'Lightning', 'Frost', 'Poison', 'Arcane', 'Molding', 'Advanced'],
   abilities: [
     // ── Fire ──
     {
@@ -129,6 +129,27 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       modifierScaling: 'Details TBD',
       requiresAbilityId: 'arcane_bolt',
       description: 'Requires Arcane Bolt. Shield details are pending — placeholder ability.',
+    },
+    // ── Molding ──
+    {
+      id: 'spell_molding_1',
+      name: 'Spell Molding (Level 1)',
+      element: 'Molding',
+      description: 'Lets you shape your bolts. Without Spell Molding a bolt can only be empowered. At this level a bolt can take one shape (Blast, Wave / Cone or Chain) at a time.',
+    },
+    {
+      id: 'spell_molding_2',
+      name: 'Spell Molding (Level 2)',
+      element: 'Molding',
+      requiresAbilityId: 'spell_molding_1',
+      description: 'Requires Spell Molding (Level 1). A bolt can be shaped with several shapes at once, mixing the elements they come from (for example Blast together with Chain).',
+    },
+    {
+      id: 'spell_molding_3',
+      name: 'Advanced Molding (Level 3)',
+      element: 'Molding',
+      requiresAbilityId: 'spell_molding_2',
+      description: 'Requires Spell Molding (Level 2). Chain molding: after Chain you can choose a second shape, Blast or Wave, that follows the chain. It starts at the main target that was hit, and each extra mana carries it to one more chained hit, causing a second set of damage and hits. You pay mana for the Chain, then more mana for the follow-up shape.',
     },
     // ── Advanced ──
     {
@@ -315,7 +336,7 @@ export function checkStormPrereq(takenIds: Set<string>): boolean {
   if (anotherFull) return true;
 
   // Or 10 total elemental abilities
-  const allElementalIds = ELEMENTS_SCHOOL.abilities.filter(a => a.id !== 'storm').map(a => a.id);
+  const allElementalIds = ELEMENTS_SCHOOL.abilities.filter(a => a.id !== 'storm' && a.element !== 'Molding').map(a => a.id);
   const count = allElementalIds.filter(id => takenIds.has(id)).length;
   return count >= 10;
 }

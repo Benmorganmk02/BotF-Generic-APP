@@ -22,6 +22,9 @@ interface Props {
   blastMana: number;
   waveConeMana: number;
   chainMana: number;
+  /** Advanced molding: a Blast or Wave that follows the Chain, and how many chained hits it fires from (the main target counts as the first). */
+  followShape: 'blast' | 'wave' | null;
+  followCount: number;
 }
 
 type Drag = { kind: 'caster' | 'aim' | 'token' | 'hop'; lastP?: Point; id?: string; dx: number; dy: number; moved: boolean; carryAim?: boolean; lastX?: number; lastY?: number };
@@ -29,7 +32,11 @@ type Drag = { kind: 'caster' | 'aim' | 'token' | 'hop'; lastP?: Point; id?: stri
 const snap = (v: number, step: number) => Math.round(v / step) * step;
 const px = (v: number) => v * CELL;
 
-export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana }: Props) {
+const FOLLOW_COLOR = '#fb923c';
+const FOLLOW_BLAST_RADIUS = 2;
+const FOLLOW_WAVE_RADIUS = 1;
+
+export default function SpellMap({ boltName, element, isHealing, blastMana, waveConeMana, chainMana, followShape, followCount }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const [caster, setCaster] = useState<Token>({ id: 'caster', kind: 'caster', x: 3, y: 7 });
@@ -66,11 +73,22 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const chainTargets = primary && primary.kind === 'enemy' && chainCount > 0
     ? chainHops(primary, tokens.filter(t => t.kind === 'enemy'), chainCount, CHAIN_RANGE, hopOverrides)
     : [];
+  // Advanced molding: the follow-up shape fires from the main target, then from the first chained hits
+  const followSources = followShape && primary ? [primary, ...chainTargets].slice(0, followCount) : [];
+  const followSquares = new Set<Square>();
+  for (const src of followSources) {
+    const sq2 = followShape === 'blast' ? blastSquares(tokenCenter(src), FOLLOW_BLAST_RADIUS) : waveSquares(src, FOLLOW_WAVE_RADIUS);
+    sq2.forEach(s => followSquares.add(s));
+  }
   const hitIds = new Set<string>();
   if (primary) hitIds.add(primary.id);
   for (const t of chainTargets) hitIds.add(t.id);
   for (const t of tokens) if (areas.some(a => tokenHit(t, a))) hitIds.add(t.id);
-  const casterInArea = areas.some(a => tokenHit(caster, a));
+  const followHitIds = new Set(tokens.filter(t => followSquares.size > 0 && tokenHit(t, followSquares)).map(t => t.id));
+  followHitIds.forEach(id => hitIds.add(id));
+  const followEnemies = tokens.filter(t => t.kind === 'enemy' && followHitIds.has(t.id)).length;
+  const followAllies = tokens.filter(t => t.kind === 'ally' && followHitIds.has(t.id)).length;
+  const casterInArea = areas.some(a => tokenHit(caster, a)) || (followSquares.size > 0 && tokenHit(caster, followSquares));
   const enemiesHit = tokens.filter(t => t.kind === 'enemy' && hitIds.has(t.id)).length;
   const alliesHit = tokens.filter(t => t.kind === 'ally' && hitIds.has(t.id)).length;
 
@@ -213,8 +231,22 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
               rx={px(waveRadius)} {...trueShapeProps} />
           )}
 
+          {/* Follow-up shapes (advanced molding), from the main target and the chained hits */}
+          {followSources.map(src => {
+            const c = tokenCenter(src);
+            return followShape === 'blast'
+              ? <circle key={`fs-${src.id}`} cx={px(c.x)} cy={px(c.y)} r={px(FOLLOW_BLAST_RADIUS)} fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />
+              : <rect key={`fs-${src.id}`} x={px(src.x - FOLLOW_WAVE_RADIUS)} y={px(src.y - FOLLOW_WAVE_RADIUS)} width={px(TOKEN_SIZE + FOLLOW_WAVE_RADIUS * 2)} height={px(TOKEN_SIZE + FOLLOW_WAVE_RADIUS * 2)}
+                  rx={px(FOLLOW_WAVE_RADIUS)} fill={FOLLOW_COLOR} fillOpacity={0.14} stroke={FOLLOW_COLOR} strokeWidth={2} strokeDasharray="6 4" />;
+          })}
+
           {/* 2. the grid squares they touch, on top */}
           {Object.entries(squaresByKey).map(([key, squares]) => squareLayer(key, squares))}
+
+          {[...followSquares].map(s => {
+            const [sx, sy] = s.split(',').map(Number);
+            return <rect key={`f-${s}`} x={px(sx)} y={px(sy)} width={CELL} height={CELL} fill={FOLLOW_COLOR} fillOpacity={0.4} stroke={FOLLOW_COLOR} strokeOpacity={0.8} />;
+          })}
 
           {/* Bolt line and Chain hops */}
           <line x1={px(casterC.x)} y1={px(casterC.y)} x2={px(aim.x)} y2={px(aim.y)} stroke={color} strokeWidth={2} strokeDasharray="5 4" />
@@ -253,6 +285,13 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
           {blastMana > 0 && ` Blast: ${blastRadius} m radius circle around the marker.`}
           {sweepText}
         </p>
+        {followShape && (
+          <p>
+            Follow-up {followShape === 'blast' ? 'Blast' : 'Wave'} (orange): fires from the main target
+            {followCount === 2 ? ' and the first chained hit' : followCount > 2 ? ` and the first ${followCount - 1} chained hits` : ''}
+            {followSources.length === 0 ? ' — aim the marker at an enemy to start it.' : `. Hits: ${followEnemies} enem${followEnemies === 1 ? 'y' : 'ies'}, ${followAllies} all${followAllies === 1 ? 'y' : 'ies'} (a second set of damage).`}
+          </p>
+        )}
         {chainCount > 0 && (
           <p>Chain: aim the marker at an enemy (the main target). Each jump (numbered yellow marker) goes to the nearest enemy within {CHAIN_RANGE} m of the main target on its own ({chainTargets.length}/{chainCount} found). Drag a jump marker onto a different enemy to aim it yourself, or drop it on empty ground to go back to automatic.</p>
         )}

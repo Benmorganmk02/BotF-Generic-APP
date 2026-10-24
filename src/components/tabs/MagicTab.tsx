@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { chainTargetCount, clamp } from '../../utils/spellGeometry';
 import { useChar } from '../../context/CharacterContext';
 import { AbilityEntry } from '../../types/character';
 import { getAvailAbilityPts, getManaMax } from '../../utils/mechanics';
@@ -91,13 +92,26 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
 
   const unlockedBolts = bolts.filter(b => takenIds.has(b.id));
   const [selectedBoltId, setSelectedBoltId] = useState<string | null>(null);
-  const [activeModifiers, setActiveModifiers] = useState<Record<string, number>>({});
+  const [rawModifiers, setActiveModifiers] = useState<Record<string, number>>({});
+  // Advanced molding: a second shape (Blast or Wave) that follows Chain, and how many chained hits it fires from
+  const [followShape, setFollowShape] = useState<'blast' | 'wave' | null>(null);
+  const [followMana, setFollowMana] = useState(1);
   const [empowerMana, setEmpowerMana] = useState(0);
   // Cone splitter state: how much of the pool goes to length vs width
 
   const selectedBolt = bolts.find(b => b.id === selectedBoltId);
   const isHealing = selectedBoltId === 'healing';
   const unlockedModifiers = modifiers.filter(m => takenIds.has(m.id));
+
+  // Spell Molding: with no levels a bolt can only be empowered; level 1 allows one shape at a time; level 2+ several.
+  const SHAPE_IDS = ['blast', 'chain', 'wave_cone'];
+  const moldingLevel = takenIds.has('spell_molding_3') ? 3 : takenIds.has('spell_molding_2') ? 2 : takenIds.has('spell_molding_1') ? 1 : 0;
+  const activeModifiers: Record<string, number> = { ...rawModifiers };
+  if (moldingLevel === 0) SHAPE_IDS.forEach(id => delete activeModifiers[id]);
+  else if (moldingLevel === 1) {
+    const keep = SHAPE_IDS.find(id => (activeModifiers[id] ?? 0) > 0);
+    SHAPE_IDS.forEach(id => { if (id !== keep) delete activeModifiers[id]; });
+  }
 
   const toggleModifier = (modId: string) => {
     setActiveModifiers(prev => {
@@ -107,7 +121,10 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
         delete next[modId];
         return next;
       }
-      return { ...prev, [modId]: 1 };
+      const base = moldingLevel === 1 && SHAPE_IDS.includes(modId)
+        ? Object.fromEntries(Object.entries(prev).filter(([k]) => !SHAPE_IDS.includes(k)))
+        : prev;
+      return { ...base, [modId]: 1 };
     });
   };
 
@@ -132,6 +149,14 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   // Wave/Cone pool calculation
   const waveConeCount = activeModifiers['wave_cone'] ?? 0;
 
+  // Advanced molding (level 3): Chain followed by a Blast or Wave
+  const chainMana = activeModifiers['chain'] ?? 0;
+  const chainJumps = chainTargetCount(chainMana);
+  const followOptions = ([{ id: 'blast', modId: 'blast', name: 'Blast' }, { id: 'wave', modId: 'wave_cone', name: 'Wave' }] as const)
+    .filter(o => takenIds.has(o.modId));
+  const followActive = moldingLevel >= 3 && chainMana > 0 && followShape !== null && followOptions.some(o => o.id === followShape);
+  const followCount = followActive ? clamp(followMana, 1, chainJumps + 1) : 0;
+
   let modMana = 0;
   interface ModSummary { id: string; label: string; effect: string; mana: number }
   const modSummaries: ModSummary[] = [];
@@ -143,6 +168,17 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
       const effect = computeModEffect(mod.id, count);
       modSummaries.push({ id: mod.id, label: mod.name, effect, mana: cost });
     }
+  }
+  if (followActive && followShape) {
+    modMana += followCount;
+    const what = followShape === 'blast' ? 'a 2 m blast' : 'a 1 m wave';
+    const reach = followCount === 2 ? ' and the first chained hit' : followCount > 2 ? ` and the first ${followCount - 1} chained hits` : '';
+    modSummaries.push({
+      id: 'follow',
+      label: `Then ${followShape === 'blast' ? 'Blast' : 'Wave'}${followCount > 1 ? ` ×${followCount}` : ''}`,
+      effect: `Fires ${what} from the main target${reach}, ${isHealing ? 'healing' : 'dealing'} ${baseDmg + empowerDmg} ${isHealing ? 'HP' : 'damage'} again to everyone caught (a second set of hits)`,
+      mana: followCount,
+    });
   }
   const totalMana = baseMana + empowerMana + modMana;
   const totalDmg = baseDmg + empowerDmg;
@@ -199,6 +235,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
               const unlocked = takenIds.has(mod.id);
               const active = (activeModifiers[mod.id] ?? 0) > 0;
               const extraCount = activeModifiers[mod.id] ?? 0;
+              const needsMolding = SHAPE_IDS.includes(mod.id) && moldingLevel < 1;
               return (
                 <div key={mod.id} className="flex items-center gap-1">
                   <label
@@ -209,22 +246,50 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                     <input
                       type="checkbox"
                       checked={active}
-                      onChange={() => unlocked && toggleModifier(mod.id)}
-                      disabled={!unlocked}
+                      onChange={() => unlocked && !needsMolding && toggleModifier(mod.id)}
+                      disabled={!unlocked || needsMolding}
                       className="accent-primary h-3.5 w-3.5"
                     />
                     {mod.name}
-                    {!unlocked && <span className="text-[10px]">(locked)</span>}
+                    {!unlocked ? <span className="text-[10px]">(locked)</span> : needsMolding ? <span className="text-[10px]">(needs Spell Molding)</span> : null}
                   </label>
                   {active && (
                     <div className="flex items-center gap-0.5 ml-1">
-                      <Stepper value={extraCount} onChange={v => { const copy = { ...activeModifiers }; if (v <= 0) { delete copy[mod.id]; } else { copy[mod.id] = v; } setActiveModifiers(copy); }} min={0} />
+                      <Stepper value={extraCount} onChange={v => { const copy = { ...rawModifiers }; if (v <= 0) { delete copy[mod.id]; } else { copy[mod.id] = v; } setActiveModifiers(copy); }} min={0} />
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
+
+          {moldingLevel === 0 && <p className="text-[11px] text-muted-foreground">Without Spell Molding a bolt can only be empowered.</p>}
+          {moldingLevel === 1 && <p className="text-[11px] text-muted-foreground">Spell Molding (Level 1): one shape at a time.</p>}
+
+          {/* Advanced molding: a second shape that follows Chain */}
+          {moldingLevel >= 3 && chainMana > 0 && (
+            <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+              <div className="text-xs font-semibold text-foreground">Advanced molding: then, after the Chain</div>
+              {followOptions.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">Take Blast or Wave / Cone to use a follow-up shape.</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => setFollowShape(null)}
+                      className={`px-2 py-1 rounded-md border text-xs ${followShape === null ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>None</button>
+                    {followOptions.map(o => (
+                      <button key={o.id} onClick={() => setFollowShape(o.id)}
+                        className={`px-2 py-1 rounded-md border text-xs ${followShape === o.id ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>{o.name}</button>
+                    ))}
+                    {followActive && <Stepper value={followCount} onChange={v => setFollowMana(clamp(v, 1, chainJumps + 1))} min={1} label="hits" />}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    1 mana fires it from the main target; each extra mana carries it to one more chained hit (up to {chainJumps + 1}). Each one deals the spell's damage again.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Empower */}
           <div className="flex items-center gap-2">
@@ -316,6 +381,8 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                     setSelectedBoltId(null);
                     setActiveModifiers({});
                     setEmpowerMana(0);
+                    setFollowShape(null);
+                    setFollowMana(1);
                   }}
                 >
                   {canCast
@@ -337,6 +404,8 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
         blastMana={selectedBolt ? activeModifiers['blast'] ?? 0 : 0}
         waveConeMana={selectedBolt ? waveConeCount : 0}
         chainMana={selectedBolt ? activeModifiers['chain'] ?? 0 : 0}
+        followShape={selectedBolt && followActive ? followShape : null}
+        followCount={selectedBolt ? followCount : 0}
       />
     </div>
   );
