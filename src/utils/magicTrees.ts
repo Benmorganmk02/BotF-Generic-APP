@@ -52,10 +52,10 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       element: 'Fire',
       isModifier: true,
       modifierManaCost: 1,
-      modifierEffect: 'Bolt explodes in a 10ft. circle dealing damage to all enemies in the area',
-      modifierScaling: '+5ft. radius per additional mana',
+      modifierEffect: 'Bolt explodes in a 2 m radius, dealing damage to all enemies in the area',
+      modifierScaling: '+1 m radius per additional mana',
       requiresAbilityId: 'fire_bolt',
-      description: 'Requires Fire Bolt. Spend 1 mana to cause your elemental bolt to explode, dealing damage to anyone in a 10ft. circle. Each additional mana increases the radius by 5ft.',
+      description: 'Requires Fire Bolt. Spend 1 mana to cause your elemental bolt to explode, dealing damage to anyone within 2 m of the target point. Each additional mana increases the radius by 1 m.',
     },
     // ── Lightning ──
     {
@@ -90,10 +90,10 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       element: 'Frost',
       isModifier: true,
       modifierManaCost: 1,
-      modifierEffect: 'Creates a 5ft. wave around you OR a 20ft. cone (choose length/width)',
-      modifierScaling: '+5ft. wave / +10ft. cone per extra mana',
+      modifierEffect: 'Creates a 1 m wave around you OR a cone 4 m long and 1 m wide at the end (choose length/width)',
+      modifierScaling: '+1 m wave / +2 m of cone (length + width) per extra mana',
       requiresAbilityId: 'frost_bolt',
-      description: 'Requires Frost Bolt. Spend 1 mana to create a 5ft. wave around you, or a 20ft. cone choosing the length and width. Each additional mana increases the wave by 5ft. and cone by 10ft.',
+      description: 'Requires Frost Bolt. Spend 1 mana to create a 1 m wave around you, or a cone 4 m long and 1 m wide at the end, choosing the length and width. Each additional mana increases the wave by 1 m and the cone by 2 m (split between length and width).',
     },
     // ── Poison ──
     {
