@@ -136,7 +136,8 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
               <TabsContent value="attributes"><AttributesTab /></TabsContent>
               <TabsContent value="skills"><SkillsTab /></TabsContent>
               <TabsContent value="abilities"><AbilitiesTab /></TabsContent>
-              <TabsContent value="magic"><MagicTab /></TabsContent>
+              {/* Kept mounted (just hidden) so the spell builder and map keep their state while you visit other tabs */}
+              <TabsContent value="magic" forceMount className="data-[state=inactive]:hidden"><MagicTab /></TabsContent>
               <TabsContent value="proficiencies"><ProficienciesTab /></TabsContent>
               <TabsContent value="armor"><ArmorEquipmentTab /></TabsContent>
             </div>
