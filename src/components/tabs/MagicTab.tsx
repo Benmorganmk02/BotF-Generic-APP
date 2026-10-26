@@ -560,13 +560,14 @@ function SchoolPanel({ school, takenIds, canAdd, onTake, onRemove }: {
     // Special: Dynamic Illusion needs both physical + mental
     if (a.id === 'mind_dynamic_illusion') return !checkDynamicIllusionPrereq(takenIds);
     // Standard prereq
+    if (a.alsoRequiresAbilityIds?.some(id => !takenIds.has(id))) return true;
     if (!a.requiresAbilityId) return false;
     return !takenIds.has(a.requiresAbilityId);
   };
 
   const isRemoveBlocked = (a: MagicAbility) => {
     // Can't remove if a dependent is taken
-    const dependents = school.abilities.filter(x => x.requiresAbilityId === a.id);
+    const dependents = school.abilities.filter(x => x.requiresAbilityId === a.id || x.alsoRequiresAbilityIds?.includes(a.id));
     if (dependents.some(d => takenIds.has(d.id))) return true;
     // Dynamic illusion depends on both physical & mental
     if (a.id === 'mind_physical_illusion' || a.id === 'mind_mental_illusion') {

@@ -7,6 +7,8 @@ export interface MagicAbility {
   name: string;
   description: string;
   requiresAbilityId?: string;  // prerequisite within the same element/branch
+  /** further prerequisites that must also be taken (same school) */
+  alsoRequiresAbilityIds?: string[];
   /** element this ability belongs to (for grouping) */
   element: string;
   /** Whether this is a base bolt spell */
@@ -269,7 +271,7 @@ const RUNECRAFT_SCHOOL: MagicSchool = {
       id: 'rune_inscribing',
       name: 'Inscribing Runes',
       element: 'Inscribing',
-      description: 'Story prerequisites (not tracked by the app): knowing the runic language (the language of magic) and being able to use physical magic. Inscribing creates the pool of magic in a rune, etching the magic into it; any magic you have access to yourself can be imbued into a rune. Anyone can write, chisel or make runes, but only those who can inscribe can empower them. Opens three branches: Transcribing, Matrices and Scribing.',
+      description: 'Story prerequisites (not tracked by the app): knowing the runic language (the language of magic) and being able to use physical magic. Inscribing creates the pool of magic in a rune, etching the magic into it; any magic you have access to yourself can be imbued into a rune. Anyone can write, chisel or make runes, but only those who can inscribe can empower them. Opens three branches: Transcribing, Matrices (levels 2 and 3; level 1 can be taken without it) and Scribing.',
     },
     {
       id: 'rune_transcribing',
@@ -282,22 +284,23 @@ const RUNECRAFT_SCHOOL: MagicSchool = {
       id: 'rune_matrices_1',
       name: 'Matrices (Level 1)',
       element: 'Matrices',
-      requiresAbilityId: 'rune_inscribing',
-      description: 'Requires Inscribing Runes. Combine inscribed runes or runestones into a more complex spell or effect, such as a fire rune and a blast rune for a fireball, or a lightning rune and a chain rune for chain lightning. Can create any spell effect of the School of Elements & Arcane. The runes used in the casting are destroyed.',
+      description: 'Does not require Inscribing Runes. Combine inscribed runes or runestones into a more complex spell or effect, such as a fire rune and a blast rune for a fireball, or a lightning rune and a chain rune for chain lightning. Can create any spell effect of the School of Elements & Arcane. The runes used in the casting are destroyed.',
     },
     {
       id: 'rune_matrices_2',
       name: 'Matrices (Level 2)',
       element: 'Matrices',
       requiresAbilityId: 'rune_matrices_1',
-      description: 'Requires Matrices (Level 1). The runes are no longer destroyed in the casting.',
+      alsoRequiresAbilityIds: ['rune_inscribing'],
+      description: 'Requires Matrices (Level 1) and Inscribing Runes. The runes are no longer destroyed in the casting.',
     },
     {
       id: 'rune_matrices_3',
       name: 'Matrices (Level 3)',
       element: 'Matrices',
       requiresAbilityId: 'rune_matrices_2',
-      description: 'Requires Matrices (Level 2). The runes no longer need to be held, but they must be on your person and easily accessible.',
+      alsoRequiresAbilityIds: ['rune_inscribing'],
+      description: 'Requires Matrices (Level 2) and Inscribing Runes. The runes no longer need to be held, but they must be on your person and easily accessible.',
     },
     {
       id: 'rune_scribing',
