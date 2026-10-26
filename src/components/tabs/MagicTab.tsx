@@ -138,7 +138,10 @@ function PowerOptionCard() {
 }
 
 // ── Spell Builder ─────────────────────────────────────────────────────────────
-function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<string>; currentMana: number; onSpendMana: (cost: number) => void }) {
+function SpellBuilder({ takenIds, currentMana, onSpendMana, riverMana, onRiverChange }: {
+  takenIds: Set<string>; currentMana: number; onSpendMana: (cost: number) => void;
+  riverMana: number; onRiverChange: (n: number) => void;
+}) {
   const school = MAGIC_SCHOOLS.find(s => s.id === 'elements_arcane')!;
   const bolts = school.abilities.filter(a => a.isBolt);
   const modifiers = school.abilities.filter(a => a.isModifier);
@@ -151,15 +154,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   const [followMana, setFollowMana] = useState(1);
   const [followSize, setFollowSize] = useState(0);
 
-  // Magic roll (the river): its successes are mana put into the next spell for free;
-  // anything the spell costs beyond that comes out of the mana pool.
-  const { character: ch } = useChar();
-  const { currentRoll } = useDiceRoll();
-  const magicDice = getMagicRollDice(ch);
-  const [riverMana, setRiverMana] = useState<number | null>(null);
-  useEffect(() => {
-    if (currentRoll && currentRoll.label === MAGIC_ROLL_LABEL) setRiverMana(currentRoll.successes);
-  }, [currentRoll]);
   const [empowerMana, setEmpowerMana] = useState(0);
   // Cone splitter state: how much of the pool goes to length vs width
 
@@ -267,21 +261,6 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <h3 className="text-sm font-semibold text-foreground">Spell Builder</h3>
-
-      {/* Magic roll */}
-      <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-foreground">Magic roll{magicDice > 0 ? ` · ${magicDice}d6` : ''}</span>
-          {magicDice > 0 && <RollButton label={MAGIC_ROLL_LABEL} diceCount={magicDice} size="sm" />}
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          {magicDice > 0
-            ? riverMana === null
-              ? 'Roll before casting: each success is 1 mana put into the spell for free. Whatever the spell costs beyond that comes out of your mana pool.'
-              : `${riverMana} mana from your roll is ready for the next spell (unused roll mana is lost once you cast).`
-            : 'You have no magic roll, so all spell mana comes out of your mana pool. Choose a power option below to get one.'}
-        </p>
-      </div>
 
       {/* Bolt picker */}
       <div className="flex gap-2 flex-wrap">
@@ -450,7 +429,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
 
             {/* Cast button */}
             {selectedBolt && (() => {
-              const freeMana = Math.min(riverMana ?? 0, totalMana);
+              const freeMana = Math.min(riverMana, totalMana);
               const poolCost = totalMana - freeMana;
               const canCast = currentMana >= poolCost && totalMana > 0;
               return (
@@ -462,7 +441,7 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                     onSpendMana(poolCost);
                     const spellName = selectedBolt.name + (modSummaries.length > 0 ? ` + ${modSummaries.map(m => m.label).join(' + ')}` : '');
                     toast.success(`Cast ${spellName}`, { description: `${totalMana} mana: ${freeMana} from your magic roll, ${poolCost} from your pool` });
-                    setRiverMana(null);
+                    onRiverChange(0);
                     setSelectedBoltId(null);
                     setActiveModifiers({});
                     setEmpowerMana(0);
@@ -657,6 +636,15 @@ export default function MagicTab() {
 
   const setMana = (v: number) => setCharacter(p => ({ ...p, mana: { ...p.mana, current: v, max: manaMax } }));
 
+  // Magic roll (the river): its successes sit in their own pool, separate from the mana pool.
+  // A spell uses them first and the rest comes out of the mana pool; unused roll mana is lost on cast.
+  const magicDice = getMagicRollDice(c);
+  const { currentRoll } = useDiceRoll();
+  const [riverMana, setRiverMana] = useState(0);
+  useEffect(() => {
+    if (currentRoll && currentRoll.label === MAGIC_ROLL_LABEL) setRiverMana(currentRoll.successes);
+  }, [currentRoll]);
+
   const takeMagicAbility = (school: MagicSchool, ability: MagicAbility) => {
     if (!canAdd) return;
     const entry: AbilityEntry = {
@@ -696,8 +684,36 @@ export default function MagicTab() {
         <p className="text-xs text-muted-foreground">Magic roll: {magicRollFormula(c)}</p>
       </div>
 
+      {/* Magic roll successes: a second pool beside the mana pool */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-foreground">Magic roll successes</h4>
+          {magicDice > 0 && (
+            <div className="flex items-center gap-2">
+              {riverMana > 0 && (
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setRiverMana(0)}>Clear</Button>
+              )}
+              <RollButton label={MAGIC_ROLL_LABEL} diceCount={magicDice} size="sm" />
+            </div>
+          )}
+        </div>
+        {magicDice > 0 ? (
+          <>
+            <BoxTracker current={riverMana} max={Math.max(magicDice, riverMana)} onChange={setRiverMana} filledClass="bg-cyan-500" />
+            <p className="text-xs text-muted-foreground">
+              {riverMana === 0
+                ? `Roll your ${magicDice}d6 magic roll before casting: each success is 1 mana for the next spell, spent before your mana pool.`
+                : `${riverMana} mana from your roll is ready for the next spell, spent before your mana pool. Unused roll mana is lost once you cast.`}
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">You have no magic roll, so all spell mana comes out of your mana pool. Choose a power option above to get one.</p>
+        )}
+      </div>
+
       {/* Spell Builder */}
-      <SpellBuilder takenIds={takenMagicIds} currentMana={c.mana.current} onSpendMana={(cost) => setMana(Math.max(0, c.mana.current - cost))} />
+      <SpellBuilder takenIds={takenMagicIds} currentMana={c.mana.current} onSpendMana={(cost) => setMana(Math.max(0, c.mana.current - cost))}
+        riverMana={riverMana} onRiverChange={setRiverMana} />
 
       {/* Schools */}
       <div className="space-y-2">
