@@ -71,10 +71,10 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       element: 'Lightning',
       isModifier: true,
       modifierManaCost: 1,
-      modifierEffect: 'Bolt chains to hit 1 additional enemy',
-      modifierScaling: '+1 additional enemy per extra mana',
+      modifierEffect: 'Bolt chains to hit 2 additional enemies',
+      modifierScaling: '+2 additional enemies per extra mana',
       requiresAbilityId: 'lightning_bolt',
-      description: 'Requires Lightning Bolt. Spend 1 mana to cause the bolt to chain, hitting 1 additional enemy. Each additional mana adds 1 more target.',
+      description: 'Requires Lightning Bolt. Spend 1 mana to cause the bolt to chain, hitting 2 additional enemies. Each additional mana adds 2 more targets.',
     },
     // ── Frost ──
     {
@@ -90,10 +90,10 @@ const ELEMENTS_SCHOOL: MagicSchool = {
       element: 'Frost',
       isModifier: true,
       modifierManaCost: 1,
-      modifierEffect: 'Creates a 2 m wave around you (aim at yourself for a full 360°) OR a cone with 20 m to split between its length and its width at the end (at least 2 m wide), set by how far you aim',
-      modifierScaling: '+1 m wave / +6 m of cone (length + width) per extra mana',
+      modifierEffect: 'Creates a 2 m wave around you (aim at yourself for a full 360°) OR a cone with 16 m to split between its length and its width at the end (at least 2 m wide), set by how far you aim',
+      modifierScaling: '+1 m wave / +4 m of cone (length + width) per extra mana',
       requiresAbilityId: 'frost_bolt',
-      description: 'Requires Frost Bolt. Spend 1 mana to create a 2 m wave around you, or a cone with 20 m to spend between its length and its width at the end (the end is never narrower than 2 m). Aim at yourself for a full 360° wave. Aiming farther makes the cone longer and narrower, aiming nearer makes it shorter and wider. Each additional mana increases the wave by 1 m and the cone by 6 m.',
+      description: 'Requires Frost Bolt. Spend 1 mana to create a 2 m wave around you, or a cone with 16 m to spend between its length and its width at the end (the end is never narrower than 2 m). Aim at yourself for a full 360° wave. Aiming farther makes the cone longer and narrower, aiming nearer makes it shorter and wider. Each additional mana increases the wave by 1 m and the cone by 4 m.',
     },
     // ── Poison ──
     {

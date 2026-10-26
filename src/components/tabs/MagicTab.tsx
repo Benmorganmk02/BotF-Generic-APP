@@ -68,12 +68,12 @@ function computeModEffect(modId: string, manaSpent: number): string {
       return `${radius} m radius AoE explosion`;
     }
     case 'chain': {
-      const targets = 1 + extra;
+      const targets = 2 + extra * 2;
       return `Chains to ${targets} additional target${targets !== 1 ? 's' : ''}`;
     }
     case 'wave_cone': {
       const waveRadius = 2 + extra;
-      return `Wave: ${waveRadius} m out from you (marker on you = 360°) · Cone: ${20 + extra * 6} m total, where the marker reaches sets the length and the rest is the width at the end (at least 2 m wide)`;
+      return `Wave: ${waveRadius} m out from you (marker on you = 360°) · Cone: ${16 + extra * 4} m total, where the marker reaches sets the length and the rest is the width at the end (at least 2 m wide)`;
     }
     case 'shield':
       return 'Shield effect (details TBD)';

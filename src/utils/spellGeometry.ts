@@ -86,8 +86,8 @@ export function coneTriangle(caster: Pick<Token, 'x' | 'y'>, angle: number, leng
 }
 
 /** Total reach a Wave/Cone modifier gives: length + width at the end, in meters.
- * 20 for the first mana, +6 per extra mana. */
-export const conePool = (mana: number) => (mana > 0 ? 20 + (mana - 1) * 6 : 0);
+ * 16 for the first mana, +4 per extra mana. */
+export const conePool = (mana: number) => (mana > 0 ? 16 + (mana - 1) * 4 : 0);
 
 /** A cone is never narrower than this at its far end, in meters. */
 export const MIN_CONE_WIDTH = 2;
@@ -187,8 +187,8 @@ export const tokenHit = (t: Pick<Token, 'x' | 'y'>, squares: Set<Square>) => tok
 export const pointInToken = (p: Point, t: Pick<Token, 'x' | 'y'>) =>
   p.x >= t.x && p.x <= t.x + TOKEN_SIZE && p.y >= t.y && p.y <= t.y + TOKEN_SIZE;
 
-/** How many extra targets Chain jumps to: 1 per mana spent on it. */
-export const chainTargetCount = (chainMana: number) => Math.max(0, chainMana);
+/** How many extra targets Chain jumps to: 2 per mana spent on it. */
+export const chainTargetCount = (chainMana: number) => Math.max(0, chainMana) * 2;
 
 /** Advanced molding follow-up shapes. A Blast starts 2 m in radius; a Cone starts 10 m in total, split
  * evenly between its length and its width at the end (5 m x 5 m). Each size step (up to MAX_FOLLOW_SIZE)
