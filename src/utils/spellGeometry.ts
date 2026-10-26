@@ -86,14 +86,17 @@ export function coneTriangle(caster: Pick<Token, 'x' | 'y'>, angle: number, leng
 }
 
 /** Total reach a Wave/Cone modifier gives: length + width at the end, in meters.
- * 10 for the first mana, +2 per extra mana. */
-export const conePool = (mana: number) => (mana > 0 ? 10 + (mana - 1) * 2 : 0);
+ * 20 for the first mana, +6 per extra mana. */
+export const conePool = (mana: number) => (mana > 0 ? 20 + (mana - 1) * 6 : 0);
 
 /** A cone is never narrower than this at its far end, in meters. */
 export const MIN_CONE_WIDTH = 2;
 
-/** Wave radius (meters out from the caster's footprint): 1 for the first mana, +1 per extra mana. */
-export const waveRadiusFor = (mana: number) => (mana > 0 ? 1 + (mana - 1) : 0);
+/** Blast radius in meters: 3 for the first mana, +1 per extra mana. */
+export const blastRadiusFor = (mana: number) => (mana > 0 ? 3 + (mana - 1) : 0);
+
+/** Wave radius (meters out from the caster's footprint): 2 for the first mana, +1 per extra mana. */
+export const waveRadiusFor = (mana: number) => (mana > 0 ? 2 + (mana - 1) : 0);
 
 export interface ConeAim {
   /** 'wave' when the marker sits on top of the caster: the spell goes all the way around (360 degrees). */

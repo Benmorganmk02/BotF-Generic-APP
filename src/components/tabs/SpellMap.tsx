@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   GRID_W, GRID_H, TOKEN_SIZE, blastSquares, waveSquares, coneSquares, coneTriangle, coneFromAim, conePool,
-  waveRadiusFor, followBlastRadius, followConePool, tokenHit, tokenCenter, pointInToken, chainTargetCount, chainHops, chainEligible, CHAIN_RANGE, clamp,
+  waveRadiusFor, blastRadiusFor, followBlastRadius, followConePool, tokenHit, tokenCenter, pointInToken, chainTargetCount, chainHops, chainEligible, CHAIN_RANGE, clamp,
   type Point, type Token, type Square,
 } from '../../utils/spellGeometry';
 
@@ -50,7 +50,7 @@ export default function SpellMap({ boltName, element, isHealing, blastMana, wave
   const [open, setOpen] = useState(false);
 
   const color = isHealing ? HEAL_COLOR : ELEMENT_COLORS[element] ?? '#a78bfa';
-  const blastRadius = blastMana > 0 ? 2 + (blastMana - 1) : 0;
+  const blastRadius = blastRadiusFor(blastMana);
   const pool = conePool(waveConeMana);
   const waveRadius = waveRadiusFor(waveConeMana);
   const chainCount = chainTargetCount(chainMana);

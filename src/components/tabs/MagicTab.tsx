@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { chainTargetCount, clamp, MAX_FOLLOW_SIZE, followBlastRadius, followConePool } from '../../utils/spellGeometry';
+import { chainTargetCount, clamp, blastRadiusFor, MAX_FOLLOW_SIZE, followBlastRadius, followConePool } from '../../utils/spellGeometry';
 import { useChar } from '../../context/CharacterContext';
 import { AbilityEntry } from '../../types/character';
 import { getAvailAbilityPts, getManaMax } from '../../utils/mechanics';
@@ -64,7 +64,7 @@ function computeModEffect(modId: string, manaSpent: number): string {
   const extra = manaSpent - 1; // first mana activates the base effect
   switch (modId) {
     case 'blast': {
-      const radius = 2 + extra;
+      const radius = blastRadiusFor(manaSpent);
       return `${radius} m radius AoE explosion`;
     }
     case 'chain': {
@@ -72,8 +72,8 @@ function computeModEffect(modId: string, manaSpent: number): string {
       return `Chains to ${targets} additional target${targets !== 1 ? 's' : ''}`;
     }
     case 'wave_cone': {
-      const waveRadius = 1 + extra;
-      return `Wave: ${waveRadius} m out from you (marker on you = 360°) · Cone: ${10 + extra * 2} m total, where the marker reaches sets the length and the rest is the width at the end (at least 2 m wide)`;
+      const waveRadius = 2 + extra;
+      return `Wave: ${waveRadius} m out from you (marker on you = 360°) · Cone: ${20 + extra * 6} m total, where the marker reaches sets the length and the rest is the width at the end (at least 2 m wide)`;
     }
     case 'shield':
       return 'Shield effect (details TBD)';
