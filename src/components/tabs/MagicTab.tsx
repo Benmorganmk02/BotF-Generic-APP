@@ -15,7 +15,7 @@ import BoxTracker from '../sheet/BoxTracker';
 import SpellMap from './SpellMap';
 import { toast } from 'sonner';
 import {
-  ChevronDown, ChevronRight, CheckCircle2, Lock, Circle,
+  ChevronDown, ChevronRight, CheckCircle2, Lock, Unlock, Circle,
   Flame, Zap, Snowflake, Skull, Sparkles, Brain, Hammer,
   Minus, Plus, Heart, ScrollText,
 } from 'lucide-react';
@@ -92,27 +92,43 @@ const MAGIC_ROLL_LABEL = 'Magic roll';
 // ── Power option: which half of magic is innate ──────────────────────────────
 function PowerOptionCard() {
   const { character: c, setCharacter } = useChar();
+  // Locked by default: the choice is shown, but changing it takes a deliberate unlock.
+  const [unlocked, setUnlocked] = useState(false);
   const voc = getFabricatedVocation(c);
   const choose = (s: MagicSource | undefined) => {
     if (voc && voc.level > 1 && !window.confirm(`Changing your power option removes "${voc.name}" (level ${voc.level}). Continue?`)) return;
     setCharacter(p => applyMagicSource(p, s));
+    setUnlocked(false);
   };
   const info = c.magicSource ? MAGIC_SOURCE_INFO[c.magicSource] : null;
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-2">
-      <h4 className="text-sm font-semibold text-foreground">Power option</h4>
-      <div className="flex gap-2 flex-wrap">
-        <button onClick={() => choose(undefined)}
-          className={`px-2.5 py-1.5 rounded-md border text-xs ${!c.magicSource ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
-          None
-        </button>
-        {MAGIC_SOURCES.map(s => (
-          <button key={s} onClick={() => choose(s)}
-            className={`px-2.5 py-1.5 rounded-md border text-xs ${c.magicSource === s ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
-            {MAGIC_SOURCE_INFO[s].label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-foreground">Power option</h4>
+        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={() => setUnlocked(u => !u)}
+          aria-label={unlocked ? 'Lock power option' : 'Unlock to change power option'}>
+          {unlocked ? <><Unlock className="h-3.5 w-3.5" />Lock</> : <><Lock className="h-3.5 w-3.5" />Change</>}
+        </Button>
       </div>
+      {unlocked ? (
+        <>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => choose(undefined)}
+              className={`px-2.5 py-1.5 rounded-md border text-xs ${!c.magicSource ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
+              None
+            </button>
+            {MAGIC_SOURCES.map(s => (
+              <button key={s} onClick={() => choose(s)}
+                className={`px-2.5 py-1.5 rounded-md border text-xs ${c.magicSource === s ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
+                {MAGIC_SOURCE_INFO[s].label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-amber-500">Changing your power option replaces your fabricated vocation with a fresh level 1 one.</p>
+        </>
+      ) : (
+        <div className="text-sm font-medium text-foreground">{info ? info.label : 'None'}</div>
+      )}
       <p className="text-xs text-muted-foreground">
         {info ? info.summary : 'No power option: an innate mana pool (3 + Wisdom + Intuition) and no magic roll, so all spell mana comes out of the pool.'}
         {info?.fabricates && ` Your "${voc?.name ?? FABRICATED_NAMES[info.fabricates]}" vocation (Proficiencies tab) fabricates the ${info.fabricates === 'pool' ? 'mana pool' : 'magic roll'}.`}
