@@ -1,8 +1,9 @@
 import {
   Character, AttributeKey, SkillKey, ArmorLayer, ArmorSlot, ArmorPiece, ARMOR_LAYERS, ARMOR_SLOTS, emptyArmorPiece,
-  InjuryLocation, InjuryLevel, INJURY_LOCATIONS, Proficiency,
+  InjuryLocation, InjuryLevel, INJURY_LOCATIONS, Proficiency, MagicSource,
 } from '../types/character';
 import { getHPMax } from './mechanics';
+import { applyMagicSource } from './magic';
 
 export function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
@@ -23,11 +24,11 @@ const defaultLoadout = { mainHand: '', offhand: '', back1: '', back2: '', back3:
 export function createDefaultCharacter(
   type: 'normal' | 'gm',
   name = 'New Character', player = '',
-  origin: { world?: string; archetype?: string; race?: string; background?: string } = {},
+  origin: { world?: string; archetype?: string; race?: string; background?: string; magicSource?: MagicSource } = {},
 ): Character {
   const profs: Proficiency[] = [];
 
-  return {
+  return applyMagicSource({
     id: genId(), name, player, level: 0, race: origin.race ?? '', bodyType: '', age: '',
     world: origin.world, archetype: origin.archetype, background: origin.background,
     disablingCharacteristics: '', inherentCharacteristics: '',
@@ -45,5 +46,5 @@ export function createDefaultCharacter(
     loadout: { loadout1: { ...defaultLoadout }, loadout2: { ...defaultLoadout } },
     inventory: [], weapons: [], bows: [], crossbows: [], notes: '', freePicksUsed: 0,
     gmModeIncreases: { attributes: {}, skills: {}, proficiencies: {} },
-  };
+  }, origin.magicSource);
 }

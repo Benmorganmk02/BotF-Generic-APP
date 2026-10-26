@@ -39,11 +39,36 @@ export function effSkill(c: Character, k: SkillKey): number { return c.skills[k]
 
 // Stamina/Mana both have a floor of 3, regardless of how low the underlying
 // attribute/skill math would otherwise push them (e.g. negative modifiers).
+/** The innate half of magic: 3 + Wisdom + Intuition (never below 3). Used for an innate mana pool and an innate magic roll. */
+export function getInnateMagic(c: Character): number {
+  return Math.max(3, 3 + effAttr(c, 'wis') + effSkill(c, 'intuition'));
+}
+/** The automatic vocation that fabricates whichever half of magic is not innate. */
+export function getFabricatedVocation(c: Character): Proficiency | undefined {
+  return c.proficiencies.find(p => p.magicFabricated);
+}
+/** Mana pool (the reservoir). Innate Power casters fabricate it with their vocation; everyone else has it innate. */
 export function getManaMax(c: Character): number {
-  return Math.max(3, 3 + effAttr(c, 'int') + effSkill(c, 'advancedKnowledge'), 3 + effAttr(c, 'wis') + effSkill(c, 'intuition'));
+  if (c.magicSource === 'power') {
+    const voc = getFabricatedVocation(c);
+    return Math.max(3, voc ? getProfDice(c, voc) : 0);
+  }
+  return getInnateMagic(c);
+}
+/** Magic roll dice (the river): successes are mana put into a spell. Innate Power and Full Sorcerer casters roll
+ * their innate magic; Innate Mana Pool casters roll their vocation; anyone else has no magic roll (0). */
+export function getMagicRollDice(c: Character): number {
+  if (c.magicSource === 'power' || c.magicSource === 'sorcerer') return getInnateMagic(c);
+  if (c.magicSource === 'pool') {
+    const voc = getFabricatedVocation(c);
+    return voc ? getProfDice(c, voc) : 0;
+  }
+  return 0;
 }
 export function getStaminaMax(c: Character): number { return Math.max(3, 3 + effAttr(c, 'str') + effSkill(c, 'endurance')); }
-export function getHPMax(lvl: number): number { return 200 + lvl * 10; }
+/** 50 at level 0, +10 per level, topping out at 350 at level 30. */
+export const MAX_HP_LEVEL = 30;
+export function getHPMax(lvl: number): number { return 50 + Math.min(Math.max(lvl, 0), MAX_HP_LEVEL) * 10; }
 
 function getSpentAttrPts(c: Character): number {
   let s = 0;

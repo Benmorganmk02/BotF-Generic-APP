@@ -3,6 +3,7 @@ import { useChar } from '../../context/CharacterContext';
 import { getAvailAttrPts, getAvailSkillPts, getAvailAbilityPts, getAvailProfPts, getHPMax } from '../../utils/mechanics';
 import { createDefaultCharacter } from '../../utils/defaults';
 import { getWorld } from '../../data/worlds';
+import { applyMagicSource } from '../../utils/magic';
 import PointPoolCard from '../sheet/PointPoolCard';
 import LevelUpModal from '../sheet/LevelUpModal';
 import ResetDialog from '../sheet/ResetDialog';
@@ -39,13 +40,13 @@ export default function CharacterInfoTab({ onReset }: { onReset?: () => void }) 
   };
   const handleReset = () => {
     const fresh = createDefaultCharacter(c.characterType, c.name, c.player);
-    setCharacter(p => ({
+    setCharacter(p => applyMagicSource({
       ...fresh, id: p.id, cloudId: p.cloudId,
       name: p.name, player: p.player, race: p.race, bodyType: p.bodyType, age: p.age,
       world: p.world, archetype: p.archetype, background: p.background,
       disablingCharacteristics: p.disablingCharacteristics, inherentCharacteristics: p.inherentCharacteristics,
       armor: p.armor, loadout: p.loadout, inventory: p.inventory, notes: p.notes,
-    }));
+    }, p.magicSource));
     toast.success('Character stats reset.');
   };
 

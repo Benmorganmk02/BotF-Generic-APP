@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { chainTargetCount, clamp, blastRadiusFor, MAX_FOLLOW_SIZE, followBlastRadius, followConePool } from '../../utils/spellGeometry';
 import { useChar } from '../../context/CharacterContext';
-import { AbilityEntry } from '../../types/character';
-import { getAvailAbilityPts, getManaMax } from '../../utils/mechanics';
+import { AbilityEntry, MagicSource } from '../../types/character';
+import { getAvailAbilityPts, getManaMax, getMagicRollDice, getFabricatedVocation } from '../../utils/mechanics';
+import { MAGIC_SOURCES, MAGIC_SOURCE_INFO, FABRICATED_NAMES, applyMagicSource, manaPoolFormula, magicRollFormula } from '../../utils/magic';
+import { useDiceRoll } from '../../context/DiceRollContext';
+import RollButton from '../dice/RollButton';
 import {
   MAGIC_SCHOOLS, checkStormPrereq, checkDynamicIllusionPrereq,
 } from '../../utils/magicTrees';
@@ -84,6 +87,40 @@ function computeModEffect(modId: string, manaSpent: number): string {
   }
 }
 
+const MAGIC_ROLL_LABEL = 'Magic roll';
+
+// ── Power option: which half of magic is innate ──────────────────────────────
+function PowerOptionCard() {
+  const { character: c, setCharacter } = useChar();
+  const voc = getFabricatedVocation(c);
+  const choose = (s: MagicSource | undefined) => {
+    if (voc && voc.level > 1 && !window.confirm(`Changing your power option removes "${voc.name}" (level ${voc.level}). Continue?`)) return;
+    setCharacter(p => applyMagicSource(p, s));
+  };
+  const info = c.magicSource ? MAGIC_SOURCE_INFO[c.magicSource] : null;
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+      <h4 className="text-sm font-semibold text-foreground">Power option</h4>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={() => choose(undefined)}
+          className={`px-2.5 py-1.5 rounded-md border text-xs ${!c.magicSource ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
+          None
+        </button>
+        {MAGIC_SOURCES.map(s => (
+          <button key={s} onClick={() => choose(s)}
+            className={`px-2.5 py-1.5 rounded-md border text-xs ${c.magicSource === s ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
+            {MAGIC_SOURCE_INFO[s].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {info ? info.summary : 'No power option: an innate mana pool (3 + Wisdom + Intuition) and no magic roll, so all spell mana comes out of the pool.'}
+        {info?.fabricates && ` Your "${voc?.name ?? FABRICATED_NAMES[info.fabricates]}" vocation (Proficiencies tab) fabricates the ${info.fabricates === 'pool' ? 'mana pool' : 'magic roll'}.`}
+      </p>
+    </div>
+  );
+}
+
 // ── Spell Builder ─────────────────────────────────────────────────────────────
 function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<string>; currentMana: number; onSpendMana: (cost: number) => void }) {
   const school = MAGIC_SCHOOLS.find(s => s.id === 'elements_arcane')!;
@@ -97,6 +134,16 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   const [followShape, setFollowShape] = useState<'blast' | 'cone' | null>(null);
   const [followMana, setFollowMana] = useState(1);
   const [followSize, setFollowSize] = useState(0);
+
+  // Magic roll (the river): its successes are mana put into the next spell for free;
+  // anything the spell costs beyond that comes out of the mana pool.
+  const { character: ch } = useChar();
+  const { currentRoll } = useDiceRoll();
+  const magicDice = getMagicRollDice(ch);
+  const [riverMana, setRiverMana] = useState<number | null>(null);
+  useEffect(() => {
+    if (currentRoll && currentRoll.label === MAGIC_ROLL_LABEL) setRiverMana(currentRoll.successes);
+  }, [currentRoll]);
   const [empowerMana, setEmpowerMana] = useState(0);
   // Cone splitter state: how much of the pool goes to length vs width
 
@@ -204,6 +251,21 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <h3 className="text-sm font-semibold text-foreground">Spell Builder</h3>
+
+      {/* Magic roll */}
+      <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-foreground">Magic roll{magicDice > 0 ? ` · ${magicDice}d6` : ''}</span>
+          {magicDice > 0 && <RollButton label={MAGIC_ROLL_LABEL} diceCount={magicDice} size="sm" />}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {magicDice > 0
+            ? riverMana === null
+              ? 'Roll before casting: each success is 1 mana put into the spell for free. Whatever the spell costs beyond that comes out of your mana pool.'
+              : `${riverMana} mana from your roll is ready for the next spell (unused roll mana is lost once you cast).`
+            : 'You have no magic roll, so all spell mana comes out of your mana pool. Choose a power option below to get one.'}
+        </p>
+      </div>
 
       {/* Bolt picker */}
       <div className="flex gap-2 flex-wrap">
@@ -372,16 +434,19 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
 
             {/* Cast button */}
             {selectedBolt && (() => {
-              const canCast = currentMana >= totalMana && totalMana > 0;
+              const freeMana = Math.min(riverMana ?? 0, totalMana);
+              const poolCost = totalMana - freeMana;
+              const canCast = currentMana >= poolCost && totalMana > 0;
               return (
                 <Button
                   size="sm"
                   className="w-full mt-1"
                   disabled={!canCast}
                   onClick={() => {
-                    onSpendMana(totalMana);
+                    onSpendMana(poolCost);
                     const spellName = selectedBolt.name + (modSummaries.length > 0 ? ` + ${modSummaries.map(m => m.label).join(' + ')}` : '');
-                    toast.success(`Cast ${spellName}`, { description: `Spent ${totalMana} mana` });
+                    toast.success(`Cast ${spellName}`, { description: `${totalMana} mana: ${freeMana} from your magic roll, ${poolCost} from your pool` });
+                    setRiverMana(null);
                     setSelectedBoltId(null);
                     setActiveModifiers({});
                     setEmpowerMana(0);
@@ -391,8 +456,8 @@ function SpellBuilder({ takenIds, currentMana, onSpendMana }: { takenIds: Set<st
                   }}
                 >
                   {canCast
-                    ? <><Zap className="h-3.5 w-3.5 mr-1.5" />Cast · {totalMana} mana</>
-                    : `Not enough mana (${currentMana} / ${totalMana})`
+                    ? <><Zap className="h-3.5 w-3.5 mr-1.5" />Cast · {totalMana} mana{freeMana > 0 ? ` (${freeMana} roll + ${poolCost} pool)` : ''}</>
+                    : `Not enough pool mana (${currentMana} / ${poolCost})`
                   }
                 </Button>
               );
@@ -600,6 +665,8 @@ export default function MagicTab() {
 
   return (
     <div className="p-4 space-y-5">
+      <PowerOptionCard />
+
       {/* Mana tracker */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
         <div className="flex items-center justify-between">
@@ -609,7 +676,8 @@ export default function MagicTab() {
           </p>
         </div>
         <BoxTracker current={c.mana.current} max={manaMax} onChange={setMana} filledClass="bg-primary" />
-        <p className="text-xs text-muted-foreground">max(3+INT+AdvKnow, 3+WIS+Intuition) = {manaMax}</p>
+        <p className="text-xs text-muted-foreground">Mana pool: {manaPoolFormula(c)}</p>
+        <p className="text-xs text-muted-foreground">Magic roll: {magicRollFormula(c)}</p>
       </div>
 
       {/* Spell Builder */}

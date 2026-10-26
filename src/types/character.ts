@@ -33,6 +33,9 @@ export const SKILL_TO_ATTR: Record<SkillKey, AttributeKey> = {
   convey: 'cha', performance: 'cha', persuasion: 'cha',
 };
 
+/** A caster's power option: which half of magic is innate (see utils/magic.ts). */
+export type MagicSource = 'power' | 'pool' | 'sorcerer';
+
 export interface Proficiency {
   id: string; name: string; level: number;
   attributes: AttributeKey[]; skills: SkillKey[];
@@ -43,6 +46,8 @@ export interface Proficiency {
   /** Set when this is one of the fixed sword proficiencies (see swordData.ts) --
    * name, stat lock, level cap and allowed weapon components all come from it. */
   swordKey?: string;
+  /** Marks the automatic vocation that fabricates the half of magic that is not innate. */
+  magicFabricated?: 'pool' | 'river';
   physicalStat?: 'str' | 'dex';
   /** wis | int for weapon/vocation, int | dex for bow */
   mentalStat?: 'wis' | 'int' | 'dex';
@@ -162,6 +167,8 @@ export interface Character {
   race: string; bodyType: string; age: string;
   /** Picked in the create dialog (see data/worlds.ts): world id, archetype name ("Custom" when freely built), background name. */
   world?: string; archetype?: string; background?: string;
+  /** Caster power option; undefined = innate mana pool only, no magic roll. */
+  magicSource?: MagicSource;
   disablingCharacteristics: string; inherentCharacteristics: string;
   characterType: 'normal' | 'gm';
   berzerkActive: boolean; berzerkRound: number;

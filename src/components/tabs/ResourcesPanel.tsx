@@ -1,6 +1,8 @@
 import { useChar } from '../../context/CharacterContext';
 import BoxTracker from '../sheet/BoxTracker';
+import { useEffect } from 'react';
 import { getStaminaMax, getManaMax, getHPMax, getReactionCount } from '../../utils/mechanics';
+import { manaPoolFormula, magicRollFormula } from '../../utils/magic';
 import { Input } from '@/components/ui/input';
 import { Zap, Shield } from 'lucide-react';
 import BerzerkPanel from '../sheet/BerzerkPanel';
@@ -12,7 +14,15 @@ export default function ResourcesPanel() {
   const hpMax = getHPMax(c.level);
   const reactions = getReactionCount(c);
 
-  const setHP = (curr: number) => setCharacter(p => ({ ...p, hitPoints: { ...p.hitPoints, current: curr } }));
+  const setHP = (curr: number) => setCharacter(p => ({ ...p, hitPoints: { ...p.hitPoints, current: Math.min(curr, hpMax) } }));
+
+  // The max HP formula changed (50 + 10 per level): bring older characters' stored values in line.
+  useEffect(() => {
+    if (c.hitPoints.max !== hpMax || c.hitPoints.current > hpMax) {
+      setCharacter(p => ({ ...p, hitPoints: { current: Math.min(p.hitPoints.current, hpMax), max: hpMax } }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hpMax]);
   const setStamina = (curr: number) => setCharacter(p => ({ ...p, stamina: { ...p.stamina, current: curr, max: staminaMax } }));
   const setMana = (curr: number) => setCharacter(p => ({ ...p, mana: { ...p.mana, current: curr, max: fpMax } }));
   const setDP = (curr: number) => setCharacter(p => ({ ...p, destinyPoints: curr }));
@@ -54,7 +64,7 @@ export default function ResourcesPanel() {
           <span className="text-muted-foreground">/</span>
           <span className="text-lg font-bold text-foreground">{hpMax}</span>
         </div>
-        <p className="text-xs text-muted-foreground">Max HP = 200 + (level × 10)</p>
+        <p className="text-xs text-muted-foreground">Max HP = 50 + (level × 10), up to 350 at level 30</p>
       </div>
 
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
@@ -66,7 +76,8 @@ export default function ResourcesPanel() {
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
         <h4 className="text-sm font-semibold text-foreground">Mana</h4>
         <BoxTracker current={c.mana.current} max={fpMax} onChange={setMana} filledClass="bg-blue-500" />
-        <p className="text-xs text-muted-foreground">max(3+INT+AdvKnow, 3+WIS+Intuition) = {fpMax}</p>
+        <p className="text-xs text-muted-foreground">Pool: {manaPoolFormula(c)}</p>
+        <p className="text-xs text-muted-foreground">Magic roll: {magicRollFormula(c)}</p>
       </div>
 
       {/* Berzerk toggle — only shows when ability is taken */}

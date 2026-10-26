@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createDefaultCharacter } from '../utils/defaults';
-import { Character } from '../types/character';
+import { Character, MagicSource } from '../types/character';
+import { MAGIC_SOURCES, MAGIC_SOURCE_INFO, FABRICATED_NAMES } from '../utils/magic';
 import { WORLDS, getWorld, raceAllowed, backgroundAllowed } from '../data/worlds';
 
 interface Props { open: boolean; onClose: () => void; onCreate: (char: Character) => void; }
@@ -22,6 +23,8 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
   const [archetypeId, setArchetypeId] = useState('');
   const [raceId, setRaceId] = useState('');
   const [backgroundId, setBackgroundId] = useState('');
+  // Casters pick which half of magic is innate (see utils/magic.ts)
+  const [magicSource, setMagicSource] = useState<MagicSource | ''>('');
 
   const world = getWorld(worldId)!;
   const hasContent = world.races.length > 0 || world.backgrounds.length > 0;
@@ -37,19 +40,20 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
 
   const reset = () => {
     setName(''); setPlayer(''); setType('normal'); setWorldId(DEFAULT_WORLD);
-    setMode('archetype'); setArchetypeId(''); setRaceId(''); setBackgroundId('');
+    setMode('archetype'); setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource('');
   };
-  const clearPicks = () => { setArchetypeId(''); setRaceId(''); setBackgroundId(''); };
+  const clearPicks = () => { setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource(''); };
 
   const changeWorld = (id: string) => { setWorldId(id); clearPicks(); };
   const changeMode = (m: Mode) => { setMode(m); setRaceId(''); setBackgroundId(''); };
-  const changeArchetype = (id: string) => { setArchetypeId(id); setRaceId(''); setBackgroundId(''); };
+  const changeArchetype = (id: string) => { setArchetypeId(id); setRaceId(''); setBackgroundId(''); if (id !== 'caster') setMagicSource(''); };
   const changeRace = (id: string) => { setRaceId(id); setBackgroundId(''); };
 
   const complete = !hasContent || (
     !!archetype
     && (races.length === 0 || !!race)
     && (backgrounds.length === 0 || !!background)
+    && (archetype?.id !== 'caster' || !!magicSource)
   );
 
   const handleCreate = () => {
@@ -59,6 +63,7 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
       archetype: archetype?.name,
       race: race?.name,
       background: background?.name,
+      magicSource: archetype?.id === 'caster' && magicSource ? magicSource : undefined,
     });
     onCreate(char);
     reset();
@@ -128,6 +133,24 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
                 </Select>
                 {archetype?.guideline && <p className="text-xs text-muted-foreground">{archetype.guideline}</p>}
               </div>
+
+              {archetype?.id === 'caster' && (
+                <div className="space-y-1">
+                  <Label>Power option</Label>
+                  <Select value={magicSource} onValueChange={v => setMagicSource(v as MagicSource)}>
+                    <SelectTrigger><SelectValue placeholder="Choose how your magic works..." /></SelectTrigger>
+                    <SelectContent>
+                      {MAGIC_SOURCES.map(s => <SelectItem key={s} value={s}>{MAGIC_SOURCE_INFO[s].label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {magicSource && (
+                    <p className="text-xs text-muted-foreground">
+                      {MAGIC_SOURCE_INFO[magicSource].summary}
+                      {MAGIC_SOURCE_INFO[magicSource].fabricates && ` A "${FABRICATED_NAMES[MAGIC_SOURCE_INFO[magicSource].fabricates!]}" vocation is added at level 1.`}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {archetype && (
                 <div className="space-y-1">

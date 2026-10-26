@@ -270,7 +270,14 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
           {prof.profType === 'bow' && <Badge variant="outline" className="text-xs shrink-0 border-amber-500/50 text-amber-500">Bow</Badge>}
           {prof.profType === 'crossbow' && <Badge variant="outline" className="text-xs shrink-0 border-sky-500/50 text-sky-500">Crossbow</Badge>}
           {prof.profType === 'firearms' && <Badge variant="outline" className="text-xs shrink-0 border-destructive/60 text-destructive">Firearms</Badge>}
-          <span className="font-medium text-sm text-foreground truncate">{prof.name}</span>
+          {prof.magicFabricated ? (
+            <>
+              <Badge variant="outline" className="text-xs shrink-0 border-violet-400/50 text-violet-300">Magic</Badge>
+              <Input value={prof.name} onChange={e => update({ name: e.target.value })} aria-label="Vocation name" className="h-7 text-sm font-medium flex-1 min-w-[8rem]" />
+            </>
+          ) : (
+            <span className="font-medium text-sm text-foreground truncate">{prof.name}</span>
+          )}
           {prof.startingPrime === 1 && <Badge variant="outline" className="text-xs shrink-0">Hard</Badge>}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -280,7 +287,7 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
               <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onMoveDown} disabled={!onMoveDown}><ArrowDown className="h-3 w-3" /></Button>
             </>
           )}
-          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={remove}><Trash2 className="h-3 w-3" /></Button>
+          {!prof.magicFabricated && <Button size="icon" variant="ghost" className="h-6 w-6" onClick={remove}><Trash2 className="h-3 w-3" /></Button>}
         </div>
       </div>
 
