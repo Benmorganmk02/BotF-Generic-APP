@@ -4,6 +4,7 @@ import { Proficiency } from '../../types/character';
 import { getAvailProfPts } from '../../utils/mechanics';
 import { genId } from '../../utils/defaults';
 import { SWORD_PROFICIENCIES, SWORD_STARTING_PRIME, getSwordProfDef } from '../../utils/swordData';
+import { GUN_PROFICIENCIES, getGunProfDef } from '../../utils/gunData';
 import ProficiencyCard from '../sheet/ProficiencyCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,7 @@ const PROF_TYPE_DEFAULTS: Record<ProfType, Partial<Proficiency>> = {
   weapon:   { physicalStat: 'str', mentalStat: 'wis' },
   bow:      { physicalStat: 'str', mentalStat: 'dex' },
   crossbow: { attributes: [], skills: [] },
-  firearms: { attributes: [], skills: [] },
+  firearms: { physicalStat: 'dex', mentalStat: 'int' },
   vocation: {},
 };
 
@@ -26,6 +27,7 @@ export default function ProficienciesTab() {
   const [sp, setSp] = useState<'0' | '1'>('0');
   const [profType, setProfType] = useState<ProfType>('weapon');
   const [swordKey, setSwordKey] = useState('');
+  const [gunKey, setGunKey] = useState('');
   const avail = getAvailProfPts(c);
   const isGM = c.characterType === 'gm';
 
@@ -46,23 +48,28 @@ export default function ProficienciesTab() {
   const isMelee = profType === 'weapon';
   const ownedSwordKeys = c.proficiencies.map(p => p.swordKey).filter(Boolean) as string[];
   const swordDef = getSwordProfDef(swordKey);
-  const canAdd = isMelee ? !!swordDef : !!name.trim();
+  const isGun = profType === 'firearms';
+  const ownedGunKeys = c.proficiencies.map(p => p.gunKey).filter(Boolean) as string[];
+  const gunDef = getGunProfDef(gunKey);
+  const canAdd = isMelee ? !!swordDef : isGun ? !!gunDef : !!name.trim();
 
   const addProf = () => {
     if (!canAdd) return;
     const defaults = PROF_TYPE_DEFAULTS[profType];
     const newProf: Proficiency = {
-      id: genId(), name: isMelee ? swordDef!.name : name.trim(), level: 0,
+      id: genId(), name: isMelee ? swordDef!.name : isGun ? gunDef!.name : name.trim(), level: 0,
       attributes: [], skills: [],
       startingPrime: isMelee ? SWORD_STARTING_PRIME : sp === '1' ? 1 : 0,
       itemBonus: 0, modifier: 0,
       profType,
       ...defaults,
       ...(isMelee ? { swordKey: swordDef!.key, physicalStat: swordDef!.lockedPhysicalStat ?? 'str' } : {}),
+      ...(isGun ? { gunKey: gunDef!.key } : {}),
     };
     setCharacter(p => ({ ...p, proficiencies: [...p.proficiencies, newProf] }));
     setName('');
     setSwordKey('');
+    setGunKey('');
   };
 
   return (
@@ -83,6 +90,17 @@ export default function ProficienciesTab() {
               {SWORD_PROFICIENCIES.map(d => (
                 <SelectItem key={d.key} value={d.key} disabled={ownedSwordKeys.includes(d.key)}>
                   {d.name}{ownedSwordKeys.includes(d.key) ? ' (taken)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : isGun ? (
+          <Select value={gunKey} onValueChange={setGunKey}>
+            <SelectTrigger className="flex-1 min-w-[140px] h-9"><SelectValue placeholder="Pick a firearm proficiency..." /></SelectTrigger>
+            <SelectContent>
+              {GUN_PROFICIENCIES.map(d => (
+                <SelectItem key={d.key} value={d.key} disabled={ownedGunKeys.includes(d.key)}>
+                  {d.name}{ownedGunKeys.includes(d.key) ? ' (taken)' : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -121,6 +139,12 @@ export default function ProficienciesTab() {
       {isMelee && (
         <p className="text-xs text-muted-foreground -mt-3">
           {swordDef ? swordDef.baseFeature : 'Melee proficiencies are picked from a fixed list. Swords are first; other weapon families are coming.'}
+        </p>
+      )}
+
+      {isGun && (
+        <p className="text-xs text-muted-foreground -mt-3">
+          {gunDef ? gunDef.summary : 'Firearm proficiencies are picked from a fixed list. Attack rolls use 3 + DEX + INT or WIS (your choice on the card) + level + the gun\'s weapon bonus.'}
         </p>
       )}
 

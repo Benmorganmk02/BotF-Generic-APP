@@ -12,6 +12,7 @@ import {
   getProfDice, calcCostToLevel, getAvailProfPts, getStatChangeCost,
   effAttr, effSkill,
 } from '../../utils/mechanics';
+import { getGunProfDef, resolveGunProf, getGunWeaponBonus, getLoadedAmmo, getLoadedRound, ammoDice } from '../../utils/gunData';
 import StatModifier from './StatModifier';
 import RollButton from '../dice/RollButton';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,24 @@ function WeaponStatPickers({ prof, update }: { prof: Proficiency; update: (p: Pa
         <Select value={prof.mentalStat ?? 'wis'} onValueChange={v => update({ mentalStat: v as 'wis' | 'int' })}>
           <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="wis">WIS</SelectItem><SelectItem value="int">INT</SelectItem></SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function GunStatPickers({ prof, update }: { prof: Proficiency; update: (p: Partial<Proficiency>) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div>
+        <p className="text-xs text-muted-foreground mb-1">Physical (locked)</p>
+        <div className="h-7 px-2 flex items-center rounded-md border border-border bg-muted/40 text-xs text-muted-foreground">DEX</div>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground mb-1">Mental</p>
+        <Select value={prof.mentalStat ?? 'int'} onValueChange={v => update({ mentalStat: v as 'wis' | 'int' })}>
+          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="int">INT</SelectItem><SelectItem value="wis">WIS</SelectItem></SelectContent>
         </Select>
       </div>
     </div>
@@ -120,7 +139,7 @@ function buildCalcStr(
   prof: Proficiency, profDice: number,
   c: Parameters<typeof effAttr>[0]
 ): string {
-  if ((prof.profType === 'weapon' || prof.profType === 'bow') && prof.physicalStat && prof.mentalStat) {
+  if ((prof.profType === 'weapon' || prof.profType === 'bow' || prof.profType === 'firearms') && prof.physicalStat && prof.mentalStat) {
     const ps = prof.physicalStat.toUpperCase(); const ms = prof.mentalStat.toUpperCase();
     const suffix = prof.profType === 'bow' ? ' (bow attack)' : '';
     return `3 + ${ps}(${effAttr(c, prof.physicalStat)}) + ${ms}(${effAttr(c, prof.mentalStat)}) + Lv(${prof.level}) + Mod(${prof.modifier}) + Item(${prof.itemBonus}) = ${profDice}d6${suffix}`;
@@ -129,7 +148,7 @@ function buildCalcStr(
     return `3 + Lv(${prof.level}) + Mod(${prof.modifier}) + Item(${prof.itemBonus}) = ${profDice}d6 (aim bonus)`;
   }
   if (prof.profType === 'firearms') {
-    return `3 + Lv(${prof.level}) + Mod(${prof.modifier}) + Item(${prof.itemBonus}) = ${profDice}d6 (aim bonus — placeholder)`;
+    return `3 + Lv(${prof.level}) + Mod(${prof.modifier}) + Item(${prof.itemBonus}) = ${profDice}d6 (legacy firearms proficiency)`;
   }
   if (prof.profType === 'vocation') {
     const attrParts = prof.attributes.map(a => ` + ${ATTRIBUTE_INFO[a].abbr}(${effAttr(c, a)})`).join('');
@@ -206,6 +225,38 @@ function WeaponProfLink({ prof, profDice }: { prof: Proficiency; profDice: numbe
                 </div>
               );
             })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GunProfLink({ prof, profDice }: { prof: Proficiency; profDice: number }) {
+  const { character: c } = useChar();
+  const guns = (c.firearms ?? []).filter(g => resolveGunProf(c, g).prof?.id === prof.id);
+  return (
+    <div className="pt-1 border-t border-border/50 space-y-1">
+      {guns.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic flex items-center gap-1.5 py-0.5">
+          <Unlink className="h-3 w-3 shrink-0" /> No firearms built for this proficiency — add one from the Weapons tab.
+        </p>
+      ) : guns.map(g => {
+        const ammo = getLoadedAmmo(g);
+        const round = getLoadedRound(g);
+        const penalty = resolveGunProf(c, g).penalty;
+        const dice = Math.max(0, profDice - penalty) + getGunWeaponBonus(g);
+        return (
+          <div key={g.id} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <Link className="h-3 w-3 text-primary shrink-0" />
+              <span className="text-foreground font-medium truncate">{g.name}</span>
+              {ammo && <span className="text-muted-foreground shrink-0">{ammoDice(ammo)}{round && round.id !== 'std' ? ` ${round.label}` : ''}</span>}
+            </span>
+            <span className="flex items-center gap-1 shrink-0">
+              <span className="text-muted-foreground">Atk: <span className="font-bold text-foreground">{dice}d6</span>{penalty > 0 ? ` (-${penalty})` : ''}</span>
+              <RollButton label={`${g.name} Attack (${prof.name})`} diceCount={dice} size="sm" />
+            </span>
           </div>
         );
       })}
@@ -313,11 +364,16 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
       {prof.profType === 'weapon' && <WeaponStatPickers prof={prof} update={update} />}
       {prof.profType === 'bow' && <BowMentalStatPicker prof={prof} update={update} />}
       {prof.profType === 'vocation' && <VocationStatPickers prof={prof} update={update} />}
-      {prof.profType === 'firearms' && (
+      {prof.profType === 'firearms' && (prof.gunKey ? (
+        <>
+          <GunStatPickers prof={prof} update={update} />
+          <p className="text-xs text-muted-foreground">{getGunProfDef(prof.gunKey)?.summary} Attack: 3 + DEX + {(prof.mentalStat ?? 'int').toUpperCase()} + level + the gun's weapon bonus (2 base, +1 rifling, +1 stock, +1 per barrel level). Firearms can be fired without it, using just 3 + INT or WIS + the weapon bonus (no DEX).</p>
+        </>
+      ) : (
         <p className="text-xs text-muted-foreground italic bg-muted/30 rounded px-2 py-1">
-          Firearms weapon builder coming soon — proficiency tracked for future use.
+          Older firearms proficiency. Delete it and add one from the Firearms list to use the gun builder.
         </p>
-      )}
+      ))}
 
       {swordDef && (
         <div className="rounded border border-border/60 bg-muted/20 px-2.5 py-2 space-y-1.5 text-xs">
@@ -344,6 +400,7 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
 
       {prof.profType === 'weapon' && <WeaponProfLink prof={prof} profDice={profDice} />}
       {(prof.profType === 'bow' || prof.profType === 'crossbow') && <RangedProfLink prof={prof} />}
+      {prof.profType === 'firearms' && prof.gunKey && <GunProfLink prof={prof} profDice={profDice} />}
 
       <StatModifier value={prof.modifier} onChange={v => update({ modifier: v })} label="Modifier" />
     </div>

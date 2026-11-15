@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
-import type { Weapon, Bow, Crossbow } from '../../types/character';
+import type { Weapon, Bow, Crossbow, Firearm } from '../../types/character';
 import WeaponBuilder from './WeaponBuilder';
 import SwordBuilder from './SwordBuilder';
 import SwordAttackRow from '../sheet/SwordAttackRow';
@@ -9,6 +9,8 @@ import BowBuilder from './BowBuilder';
 import CrossbowBuilder from './CrossbowBuilder';
 import BowCard from './BowCard';
 import CrossbowCard from './CrossbowCard';
+import GunBuilder from './GunBuilder';
+import GunCard from './GunCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -210,17 +212,19 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
 }
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
-type BuilderMode = 'sword' | 'weapon' | 'bow' | 'crossbow' | null;
+type BuilderMode = 'sword' | 'weapon' | 'bow' | 'crossbow' | 'gun' | null;
 
 export default function WeaponsPanel() {
   const { character: c, setCharacter } = useChar();
   const weapons = c.weapons ?? [];
   const bows = c.bows ?? [];
   const crossbows = c.crossbows ?? [];
+  const firearms = c.firearms ?? [];
   const [builderMode, setBuilderMode] = useState<BuilderMode>(null);
   const [editingWeapon, setEditingWeapon] = useState<Weapon | undefined>(undefined);
   const [editingBow, setEditingBow] = useState<Bow | undefined>(undefined);
   const [editingCrossbow, setEditingCrossbow] = useState<Crossbow | undefined>(undefined);
+  const [editingGun, setEditingGun] = useState<Firearm | undefined>(undefined);
 
   const saveWeapon = (w: Weapon) => {
     setCharacter(p => { const ws = p.weapons ?? []; const idx = ws.findIndex(x => x.id === w.id); return { ...p, weapons: idx >= 0 ? ws.map((x, i) => i === idx ? w : x) : [...ws, w] }; });
@@ -235,9 +239,15 @@ export default function WeaponsPanel() {
     setBuilderMode(null); setEditingCrossbow(undefined);
   };
 
+  const saveGun = (g: Firearm) => {
+    setCharacter(p => { const gs = p.firearms ?? []; const idx = gs.findIndex(x => x.id === g.id); return { ...p, firearms: idx >= 0 ? gs.map((x, i) => i === idx ? g : x) : [...gs, g] }; });
+    setBuilderMode(null); setEditingGun(undefined);
+  };
+
   const deleteWeapon = (id: string) => setCharacter(p => ({ ...p, weapons: (p.weapons ?? []).filter(w => w.id !== id) }));
   const deleteBow = (id: string) => setCharacter(p => ({ ...p, bows: (p.bows ?? []).filter(b => b.id !== id) }));
   const deleteCrossbow = (id: string) => setCharacter(p => ({ ...p, crossbows: (p.crossbows ?? []).filter(x => x.id !== id) }));
+  const deleteGun = (id: string) => setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).filter(g => g.id !== id) }));
 
   const swapAt = <T,>(arr: T[], i: number, j: number): T[] => {
     const next = [...arr]; [next[i], next[j]] = [next[j], next[i]]; return next;
@@ -255,9 +265,14 @@ export default function WeaponsPanel() {
     setCharacter(p => ({ ...p, crossbows: swapAt(p.crossbows ?? [], idx, t) }));
   };
 
-  const cancelBuilder = () => { setBuilderMode(null); setEditingWeapon(undefined); setEditingBow(undefined); setEditingCrossbow(undefined); };
+  const moveGun = (idx: number, dir: -1 | 1) => {
+    const t = idx + dir; if (t < 0 || t >= firearms.length) return;
+    setCharacter(p => ({ ...p, firearms: swapAt(p.firearms ?? [], idx, t) }));
+  };
 
-  const hasNothing = weapons.length === 0 && bows.length === 0 && crossbows.length === 0;
+  const cancelBuilder = () => { setBuilderMode(null); setEditingWeapon(undefined); setEditingBow(undefined); setEditingCrossbow(undefined); setEditingGun(undefined); };
+
+  const hasNothing = weapons.length === 0 && bows.length === 0 && crossbows.length === 0 && firearms.length === 0;
 
   return (
     <div className="p-4 space-y-4">
@@ -265,6 +280,7 @@ export default function WeaponsPanel() {
       {builderMode === 'weapon' && <WeaponBuilder onSave={saveWeapon} onCancel={cancelBuilder} initialWeapon={editingWeapon} />}
       {builderMode === 'bow' && <BowBuilder onSave={saveBow} onCancel={cancelBuilder} initialBow={editingBow} />}
       {builderMode === 'crossbow' && <CrossbowBuilder onSave={saveCrossbow} onCancel={cancelBuilder} initialCrossbow={editingCrossbow} />}
+      {builderMode === 'gun' && <GunBuilder onSave={saveGun} onCancel={cancelBuilder} initialGun={editingGun} />}
 
       {!builderMode && (
         <div className="flex gap-2 flex-wrap">
@@ -279,6 +295,9 @@ export default function WeaponsPanel() {
           </Button>
           <Button size="sm" variant="outline" className="gap-1.5 h-9 flex-1 min-w-[120px]" onClick={() => setBuilderMode('crossbow')}>
             <Plus className="h-4 w-4" /> Add Crossbow
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5 h-9 flex-1 min-w-[100px]" onClick={() => setBuilderMode('gun')}>
+            <Plus className="h-4 w-4" /> Add Firearm
           </Button>
         </div>
       )}
@@ -325,6 +344,23 @@ export default function WeaponsPanel() {
               onDelete={() => deleteCrossbow(x.id)}
               onMoveUp={idx > 0 ? () => moveCrossbow(idx, -1) : undefined}
               onMoveDown={idx < crossbows.length - 1 ? () => moveCrossbow(idx, 1) : undefined}
+            />
+          ))}
+        </div>
+      )}
+
+      {!builderMode && firearms.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Firearms</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          {firearms.map((g, idx) => (
+            <GunCard key={g.id} gun={g}
+              onEdit={() => { setEditingGun(g); setBuilderMode('gun'); }}
+              onDelete={() => deleteGun(g.id)}
+              onMoveUp={idx > 0 ? () => moveGun(idx, -1) : undefined}
+              onMoveDown={idx < firearms.length - 1 ? () => moveGun(idx, 1) : undefined}
             />
           ))}
         </div>

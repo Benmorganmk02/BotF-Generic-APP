@@ -16,6 +16,7 @@ function normalizeChar(char: Character): Character {
     weapons: char.weapons ?? [],
     bows: char.bows ?? [],
     crossbows: char.crossbows ?? [],
+    firearms: char.firearms ?? [],
     berzerkActive: char.berzerkActive ?? false,
     berzerkRound: char.berzerkRound ?? 0,
   };

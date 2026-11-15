@@ -25,7 +25,7 @@ export default function CampaignCharacterPage() {
         try {
           const parsed = JSON.parse(cc.data) as Character;
           // Use the campaign character id as the "cloudId" so saves go back correctly
-          setCharacter({ ...parsed, weapons: parsed.weapons ?? [], bows: parsed.bows ?? [], crossbows: parsed.crossbows ?? [], berzerkActive: parsed.berzerkActive ?? false, berzerkRound: parsed.berzerkRound ?? 0, cloudId: cc.id });
+          setCharacter({ ...parsed, weapons: parsed.weapons ?? [], bows: parsed.bows ?? [], crossbows: parsed.crossbows ?? [], firearms: parsed.firearms ?? [], berzerkActive: parsed.berzerkActive ?? false, berzerkRound: parsed.berzerkRound ?? 0, cloudId: cc.id });
           setCanEdit(cc.canEdit);
         } catch {
           toast.error('Failed to parse character data.');

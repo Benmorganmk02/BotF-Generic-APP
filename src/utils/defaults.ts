@@ -33,7 +33,7 @@ export function createDefaultCharacter(
     world: origin.world, archetype: origin.archetype, background: origin.background,
     disablingCharacteristics: '', inherentCharacteristics: '',
     characterType: type,
-    berzerkActive: false, berzerkRound: 0,
+    berzerkActive: false, berzerkRound: 0, turnStats: { total: 0, session: 0 },
     bonusPoints: { attribute: 0, skill: 0, ability: 0, proficiency: 0 },
     modifiers: { attributes: { ...defaultAttr }, skills: { ...defaultSkills }, abilities: 0 },
     attributes: { ...defaultAttr }, skills: { ...defaultSkills },
@@ -44,7 +44,7 @@ export function createDefaultCharacter(
     armor: defaultArmor,
     injuries: defaultInjuries,
     loadout: { loadout1: { ...defaultLoadout }, loadout2: { ...defaultLoadout } },
-    inventory: [], weapons: [], bows: [], crossbows: [], notes: '', freePicksUsed: 0,
+    inventory: [], weapons: [], bows: [], crossbows: [], firearms: [], notes: '', freePicksUsed: 0,
     gmModeIncreases: { attributes: {}, skills: {}, proficiencies: {} },
   }, origin.magicSource);
 }

@@ -109,7 +109,7 @@ export function getSkillTotalDice(c: Character, k: SkillKey): number {
   return 3 + effAttr(c, SKILL_TO_ATTR[k]) + effSkill(c, k);
 }
 export function getProfDice(c: Character, p: Proficiency): number {
-  if ((p.profType === 'weapon' || p.profType === 'bow') && p.physicalStat && p.mentalStat) {
+  if ((p.profType === 'weapon' || p.profType === 'bow' || p.profType === 'firearms') && p.physicalStat && p.mentalStat) {
     const phys = p.physicalStat === 'str' ? combatStr(c) : effAttr(c, p.physicalStat);
     return Math.max(0, 3 + phys + effAttr(c, p.mentalStat) + p.level + p.modifier + p.itemBonus);
   }
@@ -144,6 +144,16 @@ export function getCrossbowAimDice(c: Character, xbow: Crossbow, prof?: Proficie
 export function getCrossbowAttackDice(c: Character): number {
   return Math.max(0, 3 + effAttr(c, 'int') + effAttr(c, 'dex'));
 }
+
+/** What the automatic rest at the end of combat does. The rest rules are not defined yet, so for now it restores
+ * nothing and reports nothing; fill it in (stamina, mana, hit points...) and End Combat applies it, listing each
+ * thing restored in `summary`. */
+export function applyEndCombatRest(c: Character): { character: Character; summary: string[] } {
+  return { character: c, summary: [] };
+}
+
+/** Every character gets one action each turn. */
+export const ACTIONS_PER_TURN = 1;
 
 /** Reactions = 1 base + floor((STR + DEX + WIS + INT raw) / 8) */
 export function getReactionCount(c: Character): number {

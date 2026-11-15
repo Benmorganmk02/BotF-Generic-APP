@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { getHitTier, type HitTier } from '../utils/gunData';
 
 export type Advantage = 'normal' | 'advantage' | 'disadvantage';
 
@@ -8,6 +9,8 @@ export interface RollExtras {
   note?: string;
   inherentDisadvLvl?: number;  // from negative skill (0, 1, or 2); stacks with player's choice
   aimDifficulty?: number;      // for ranged aim rolls: successes - difficulty = effective hits
+  hitTierChallenge?: number;   // firearm attacks: the enemy's Challenge to Hit; the roll reports a hit tier
+  hitTierRound?: { multiplier: number; baseInjury: number }; // firearm attacks: the loaded round, so the hit tier states real damage and injury
 }
 
 export interface RollEntry {
@@ -27,6 +30,8 @@ export interface RollEntry {
   /** for ranged aim rolls: successes minus this = effective hits */
   aimDifficulty?: number;
   effectiveHits?: number;
+  /** firearm attacks: how far the successes beat the Challenge to Hit */
+  hitTier?: HitTier;
   /** 'attack' (default d6 threshold) | 'damage' (formula-based) | 'offense-defense' (one pool read two ways) */
   rollType?: 'attack' | 'damage' | 'offense-defense';
   /** Die sides for damage rolls (2, 4, 6, 8, 10, 12) */
@@ -91,7 +96,7 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
   ) => {
     const count = Math.max(1, diceCount);
     const dice = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
-    const { guaranteedSuccesses = 0, advantageDiceCount = 0, note, inherentDisadvLvl = 0, aimDifficulty } = extras;
+    const { guaranteedSuccesses = 0, advantageDiceCount = 0, note, inherentDisadvLvl = 0, aimDifficulty, hitTierChallenge, hitTierRound } = extras;
     const effectiveThreshold = computeEffectiveThreshold(advantage, inherentDisadvLvl);
     const rolledSuccesses = calcRolledSuccesses(dice, effectiveThreshold, advantageDiceCount);
     const totalSuccesses = rolledSuccesses + guaranteedSuccesses;
@@ -108,6 +113,7 @@ export function DiceRollProvider({ children }: { children: ReactNode }) {
       ...(advantageDiceCount > 0 ? { advantageDiceCount } : {}),
       ...(note ? { note } : {}),
       ...(aimDifficulty !== undefined ? { aimDifficulty, effectiveHits } : {}),
+      ...(hitTierChallenge !== undefined ? { hitTier: getHitTier(totalSuccesses, hitTierChallenge, hitTierRound) } : {}),
     };
     setCurrentRoll(entry);
     setLog(prev => [entry, ...prev].slice(0, 50));

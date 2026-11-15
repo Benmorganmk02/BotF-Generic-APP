@@ -253,6 +253,24 @@ export default function DiceResultModal() {
               </div>
             </div>
 
+            {/* Firearm hit tier */}
+            {currentRoll.hitTier && (
+              <div className="flex items-center justify-between bg-muted/40 border border-border rounded px-3 py-2">
+                <span className="text-xs text-muted-foreground">
+                  {currentRoll.successes} successes vs Challenge to Hit {currentRoll.hitTier.challenge}
+                </span>
+                <div className="text-right">
+                  <span className={`text-xl font-bold ${currentRoll.hitTier.key === 'miss' ? 'text-muted-foreground' : 'text-primary'}`}>{currentRoll.hitTier.label}</span>
+                  {currentRoll.hitTier.key !== 'miss' && (
+                    <div className="text-[11px] text-muted-foreground">{currentRoll.hitTier.margin === 0 ? 'matched the challenge' : `+${currentRoll.hitTier.margin} over`}</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {currentRoll.hitTier && currentRoll.hitTier.key !== 'miss' && (
+              <p className="text-[11px] text-muted-foreground">{currentRoll.hitTier.note}</p>
+            )}
+
             {/* Aim difficulty effective hits */}
             {currentRoll.aimDifficulty !== undefined && currentRoll.aimDifficulty > 0 && (
               <div className="flex items-center justify-between bg-muted/40 border border-border rounded px-3 py-2">

@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
 import { AbilityEntry } from '../../types/character';
 import { getAvailAbilityPts } from '../../utils/mechanics';
-import { ABILITY_TREES } from '../../utils/abilityTrees';
-import type { AbilityTree, TreeAbility } from '../../utils/abilityTrees';
+import { ABILITY_TREES, describeUse } from '../../utils/abilityTrees';
+import type { AbilityTree, TreeAbility, AbilityUse } from '../../utils/abilityTrees';
+import { useCombat } from '../../context/CombatContext';
+import { toast } from 'sonner';
 import { MAGIC_SCHOOLS } from '../../utils/magicTrees';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,9 +103,20 @@ function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo }: {
   tierInfo?: { tier: number; total: number; lowerTiers: AbilityEntry[] };
 }) {
   const [open, setOpen] = useState(false);
+  const { character: c, setCharacter } = useChar();
+  const { reactionsLeft, spendReaction } = useCombat();
   const tree = ABILITY_TREES.find(t => t.id === ability.treeId);
   const treeAbility = tree?.abilities.find(a => a.id === ability.treeAbilityId);
   const hasTiers = tierInfo && tierInfo.total > 1;
+
+  // Use: spends the ability's stamina and reactions (refused if either is short)
+  const useAbility = (u: AbilityUse) => {
+    if (c.stamina.current < u.sta) { toast.error(`Not enough stamina for ${ability.name} (needs ${u.sta} STA, you have ${c.stamina.current}).`); return; }
+    if (u.reactions > reactionsLeft) { toast.error(`Not enough reactions for ${ability.name} (needs ${u.reactions}, ${reactionsLeft} left this turn).`); return; }
+    if (u.reactions > 0) spendReaction(u.reactions);
+    setCharacter(p => ({ ...p, stamina: { ...p.stamina, current: p.stamina.current - u.sta } }));
+    toast.success(`${ability.name}${u.label ? ` (${u.label})` : ''}`, { description: `${describeUse(u)} spent` });
+  };
 
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2">
@@ -136,6 +149,15 @@ function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo }: {
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
+      {treeAbility?.uses && (
+        <div className="flex gap-1.5 flex-wrap pt-1.5 pl-5">
+          {treeAbility.uses.map((u, i) => (
+            <Button key={i} size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => useAbility(u)}>
+              Use{u.label ? `: ${u.label}` : ''} · {describeUse(u)}
+            </Button>
+          ))}
+        </div>
+      )}
       {open && (
         <div className="pl-5 pt-1 space-y-1.5">
           {(ability.description || treeAbility?.description) && (

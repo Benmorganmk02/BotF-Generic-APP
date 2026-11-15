@@ -1,18 +1,17 @@
 import { useChar } from '../../context/CharacterContext';
 import BoxTracker from '../sheet/BoxTracker';
 import { useEffect } from 'react';
-import { getStaminaMax, getManaMax, getHPMax, getReactionCount } from '../../utils/mechanics';
+import { getStaminaMax, getManaMax, getHPMax } from '../../utils/mechanics';
 import { manaPoolFormula, magicRollFormula } from '../../utils/magic';
 import { Input } from '@/components/ui/input';
-import { Zap, Shield } from 'lucide-react';
 import BerzerkPanel from '../sheet/BerzerkPanel';
+import TurnTracker from '../sheet/TurnTracker';
 
 export default function ResourcesPanel() {
   const { character: c, setCharacter } = useChar();
   const staminaMax = getStaminaMax(c);
   const fpMax = getManaMax(c);
   const hpMax = getHPMax(c.level);
-  const reactions = getReactionCount(c);
 
   const setHP = (curr: number) => setCharacter(p => ({ ...p, hitPoints: { ...p.hitPoints, current: Math.min(curr, hpMax) } }));
 
@@ -27,33 +26,11 @@ export default function ResourcesPanel() {
   const setMana = (curr: number) => setCharacter(p => ({ ...p, mana: { ...p.mana, current: curr, max: fpMax } }));
   const setDP = (curr: number) => setCharacter(p => ({ ...p, destinyPoints: curr }));
 
-  const bonusReactions = Math.floor((c.attributes.str + c.attributes.dex + c.attributes.wis + c.attributes.int) / 8);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-4">
       {/* Action Economy */}
-      <div className="rounded-lg border border-border bg-card p-4 space-y-3 sm:col-span-2">
-        <h4 className="text-sm font-semibold text-foreground">Action Economy</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2.5">
-            <Zap className="h-5 w-5 text-primary shrink-0" />
-            <div>
-              <div className="text-2xl font-bold text-foreground leading-none">1</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Action per turn</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2.5">
-            <Shield className="h-5 w-5 text-accent-foreground shrink-0" />
-            <div>
-              <div className="text-2xl font-bold text-foreground leading-none">{reactions}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Reactions per turn</div>
-              <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                1 + ⌊(STR{c.attributes.str}+DEX{c.attributes.dex}+WIS{c.attributes.wis}+INT{c.attributes.int}) / 8⌋ = 1+{bonusReactions}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <TurnTracker variant="card" />
 
       <div className="rounded-lg border border-border bg-card p-4 space-y-2">
         <h4 className="text-sm font-semibold text-foreground">Hit Points</h4>

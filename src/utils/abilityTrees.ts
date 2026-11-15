@@ -2,12 +2,20 @@
 // Each tree is an archetype containing pre-defined abilities.
 // To add new trees or abilities, edit this file only — no UI changes needed.
 
+export interface AbilityUse { label?: string; sta: number; reactions: number }
+
+export function describeUse(u: AbilityUse): string {
+  return `${u.sta} STA${u.reactions ? `, ${u.reactions} reaction${u.reactions > 1 ? 's' : ''}` : ''}`;
+}
+
 export interface TreeAbility {
   id: string;
   name: string;
   summary: string;          // short one-liner for the collapsed card
   description: string;      // full rules text shown on expand
   cost: string;             // e.g. "1 STA, 2 reactions"
+  /** Spendable versions of the cost, shown as Use buttons on the ability card (stamina and reactions come off the sheet). */
+  uses?: AbilityUse[];
   requiresAbilityId?: string; // tier prerequisite within the same tree
   /** When true, this ability and its prerequisite both show as separate cards (no tier collapsing) */
   stacking?: boolean;
@@ -33,6 +41,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Greatswords: Spend a stamina point to create an area of denial, causing the attack roll to damage and push back any enemy who enters the area.',
         cost: '1 STA',
+        uses: [{ sta: 1, reactions: 0 }],
       },
       {
         id: 'oc_brutalize',
@@ -41,6 +50,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Cost 1 stamina and 1 reaction. Condition: dealing an injury level of 3 or higher. All creatures in visual range make a Wisdom (Survival) check against the victory level. On fail, they become terrified. Friendly creatures have advantage on the check. Limit of once per target.',
         cost: '1 STA, 1 reaction',
+        uses: [{ sta: 1, reactions: 1 }],
       },
       {
         id: 'oc_berzerk',
@@ -64,6 +74,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Bow: Quickly fire a second arrow in succession at the cost of one stamina point and two reactions.',
         cost: '1 STA, 2 reactions',
+        uses: [{ sta: 1, reactions: 2 }],
       },
       {
         id: 'rng_quickshot2',
@@ -72,6 +83,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Bow: Fire 2 extra arrows at the cost of one stamina point per extra arrow. The first extra arrow costs 1 reaction, the second costs 2 reactions.',
         cost: '1 STA/arrow, 1+2 reactions',
+        uses: [{ label: '1st extra arrow', sta: 1, reactions: 1 }, { label: '2nd extra arrow', sta: 1, reactions: 2 }],
         requiresAbilityId: 'rng_quickshot1',
       },
       {
@@ -81,6 +93,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Bow: Fire extra arrows at the cost of 1 stamina point and 1 reaction per arrow. The most efficient form of rapid fire.',
         cost: '1 STA + 1 reaction/arrow',
+        uses: [{ label: 'Per arrow', sta: 1, reactions: 1 }],
         requiresAbilityId: 'rng_quickshot2',
       },
       {
@@ -90,6 +103,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Bow: Fire multiple arrows from a single shot at multiple targets that are near each other. The attack damage is divided by how many arrows are fired.',
         cost: '1 STA',
+        uses: [{ sta: 1, reactions: 0 }],
       },
       {
         id: 'rng_identify_weakpoint',
@@ -99,6 +113,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Cost 1 stamina and 1 reaction. Condition: Line of sight and prior knowledge of the target\'s defense style or armor weakness. Roll a relevant Perception check against their weapon proficiency, weapon bonus, and relevant armor value. On success, the next targeted attack against the weakpoint has advantage and only costs 1 stamina to target.',
         cost: '1 STA, 1 reaction',
+        uses: [{ sta: 1, reactions: 1 }],
       },
       {
         id: 'rng_exploit_weakpoint',
@@ -108,6 +123,7 @@ export const ABILITY_TREES: AbilityTree[] = [
         description:
           'Cost 1 stamina and 1 reaction. Condition: User has successfully identified a weakpoint but has not yet attacked it. The targeted weakpoint attack reduces the target\'s relevant armor value or weapon bonus by the user\'s weapon bonus for that attack.',
         cost: '1 STA, 1 reaction',
+        uses: [{ sta: 1, reactions: 1 }],
         requiresAbilityId: 'rng_identify_weakpoint',
       },
     ],

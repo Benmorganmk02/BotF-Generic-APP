@@ -4,7 +4,7 @@ import { CharacterProvider } from '../context/CharacterContext';
 import { DiceRollProvider } from '../context/DiceRollContext';
 import { CombatProvider } from '../context/CombatContext';
 import { saveLocalCharacter } from '../utils/storage';
-import { getAvailAttrPts, getAvailSkillPts, getAvailAbilityPts, getAvailProfPts, getReactionCount } from '../utils/mechanics';
+import { getAvailAttrPts, getAvailSkillPts, getAvailAbilityPts, getAvailProfPts } from '../utils/mechanics';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import AbilitiesTab from './tabs/AbilitiesTab';
 import ProficienciesTab from './tabs/ProficienciesTab';
 import ArmorEquipmentTab from './tabs/ArmorEquipmentTab';
 import MagicTab from './tabs/MagicTab';
+import TurnTracker from './sheet/TurnTracker';
 import DiceRollPanel from './dice/DiceRollPanel';
 import DiceResultModal from './dice/DiceResultModal';
 
@@ -100,21 +101,13 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
                   <CompactPool label="Prof" value={getAvailProfPts(character)} isGM={false} />
                 </div>
                 <div className="h-6 w-px bg-border/60 hidden sm:block pt-1.5" />
-                <div className="flex gap-3 pt-1.5">
-                  <div className="flex flex-col items-center min-w-[44px]">
-                    <span className="text-sm font-bold leading-none text-foreground">1</span>
-                    <span className="text-[10px] text-muted-foreground leading-tight mt-0.5">Action</span>
-                  </div>
-                  <div className="flex flex-col items-center min-w-[44px]">
-                    <span className="text-sm font-bold leading-none text-foreground">{getReactionCount(character)}</span>
-                    <span className="text-[10px] text-muted-foreground leading-tight mt-0.5">Reactions</span>
-                  </div>
-                </div>
+                <TurnTracker variant="bar" />
               </div>
             )}
             {character.characterType === 'gm' && (
-              <div className="px-4 pb-1.5 border-t border-border/50">
-                <span className="text-[10px] text-amber-400 uppercase tracking-wide">GM/NPC — Infinite Points</span>
+              <div className="px-4 pb-2 border-t border-border/50 flex items-center gap-4 flex-wrap">
+                <span className="text-[10px] text-amber-400 uppercase tracking-wide pt-1.5">GM/NPC — Infinite Points</span>
+                <TurnTracker variant="bar" />
               </div>
             )}
           </div>

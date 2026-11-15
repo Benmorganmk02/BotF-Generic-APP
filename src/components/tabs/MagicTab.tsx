@@ -5,6 +5,7 @@ import { AbilityEntry, MagicSource } from '../../types/character';
 import { getAvailAbilityPts, getManaMax, getMagicRollDice, getFabricatedVocation } from '../../utils/mechanics';
 import { MAGIC_SOURCES, MAGIC_SOURCE_INFO, FABRICATED_NAMES, applyMagicSource, manaPoolFormula, magicRollFormula } from '../../utils/magic';
 import { useDiceRoll } from '../../context/DiceRollContext';
+import { useCombat } from '../../context/CombatContext';
 import RollButton from '../dice/RollButton';
 import {
   MAGIC_SCHOOLS, checkStormPrereq, checkDynamicIllusionPrereq,
@@ -642,6 +643,9 @@ export default function MagicTab() {
   const magicDice = getMagicRollDice(c);
   const { currentRoll } = useDiceRoll();
   const [riverMana, setRiverMana] = useState(0);
+  // A new turn (or combat starting or ending) clears the roll's unused mana
+  const { turnKey } = useCombat();
+  useEffect(() => { setRiverMana(0); }, [turnKey]);
   useEffect(() => {
     if (currentRoll && currentRoll.label === MAGIC_ROLL_LABEL) setRiverMana(currentRoll.successes);
   }, [currentRoll]);

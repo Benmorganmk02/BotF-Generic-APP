@@ -46,10 +46,12 @@ export interface Proficiency {
   /** Set when this is one of the fixed sword proficiencies (see swordData.ts) --
    * name, stat lock, level cap and allowed weapon components all come from it. */
   swordKey?: string;
+  /** Set when this is one of the fixed firearm proficiencies (see gunData.ts). */
+  gunKey?: string;
   /** Marks the automatic vocation that fabricates the half of magic that is not innate. */
   magicFabricated?: 'pool' | 'river';
   physicalStat?: 'str' | 'dex';
-  /** wis | int for weapon/vocation, int | dex for bow */
+  /** wis | int for weapon/vocation/firearms, int | dex for bow */
   mentalStat?: 'wis' | 'int' | 'dex';
 }
 export type ArmorSlot = 'head' | 'rightShoulder' | 'leftShoulder' | 'torso' | 'rightArm' | 'leftArm' | 'rightLeg' | 'leftLeg';
@@ -161,6 +163,36 @@ export interface Crossbow {
   linkedProficiencyId?: string;
 }
 
+/** A built firearm: receiver -> ammo, the four base attachments, and optional interchangeable ones. */
+export interface Firearm {
+  id: string;
+  name: string;
+  /** Receiver class id (see GUN_RECEIVERS). */
+  receiver: string;
+  /** Chambered cartridge id (see AMMO). */
+  ammoId: string;
+  /** Round type loaded (see AmmoRound.id: fmj, hp, ap...). Defaults to the cartridge's first round. Sets the damage multiplier and armor pierce. */
+  roundId?: string;
+  /** Set when a compatible cartridge is loaded instead of the chambered one (e.g. .38 Special in a .357 Magnum); sets the damage dice. */
+  loadedAmmoId?: string;
+  /** Set only when the player overrides the proficiency the build would otherwise give it (see getGunProfKey). */
+  profOverride?: string;
+  rifling: string;
+  stock: string;
+  /** 0 = base barrel (0-4 in.); each level beyond it adds 4 in. and +1 weapon bonus, up to level 5 (24 in.). */
+  barrelLevel: number;
+  /** Reload method, half one: where the rounds are stored (see STORAGE_OPTIONS). */
+  storage: string;
+  /** Reload method, half two: how the next round is cycled in (see CYCLING_OPTIONS), or 'automatic'. */
+  cycling: string;
+  /** When cycling is 'automatic': the fire modes the gun can switch between (see AUTO_MODES), at least one. */
+  autoModes?: string[];
+  /** INT or WIS for the attack roll when no firearm proficiency has been taken (the proficiency's own choice wins). Unproficient attack = 3 + this + weapon bonus. */
+  mentalStat?: 'int' | 'wis';
+  /** Interchangeable attachments, slot id -> option id. */
+  attachments: Record<string, string>;
+}
+
 export interface Character {
   id: string; cloudId?: string;
   name: string; player: string; level: number;
@@ -172,6 +204,8 @@ export interface Character {
   disablingCharacteristics: string; inherentCharacteristics: string;
   characterType: 'normal' | 'gm';
   berzerkActive: boolean; berzerkRound: number;
+  /** Turns taken in combat: all-time `total`, and `session` (the player resets it). Missing on older characters (counts as 0). */
+  turnStats?: { total: number; session: number };
   bonusPoints: { attribute: number; skill: number; ability: number; proficiency: number };
   modifiers: { attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>; abilities: number };
   attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>;
@@ -193,7 +227,7 @@ export interface Character {
   injuries: Record<InjuryLocation, Exclude<InjuryLevel, 'none'>[]>;
   loadout: { loadout1: LoadoutSet; loadout2: LoadoutSet };
   inventory: InventoryItem[]; weapons: Weapon[];
-  bows: Bow[]; crossbows: Crossbow[];
+  bows: Bow[]; crossbows: Crossbow[]; firearms: Firearm[];
   notes: string; freePicksUsed: number;
   gmModeIncreases: { attributes: Record<string, number>; skills: Record<string, number>; proficiencies: Record<string, number> };
 }
