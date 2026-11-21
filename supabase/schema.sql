@@ -322,8 +322,10 @@ end;
 $$;
 
 -- Players move their own token. A player cannot write to the campaign row, so this function does it for them: it only
--- ever changes the x/y of a player-character token whose character belongs to the caller, inside a running combat.
-create or replace function public.move_battle_token(p_campaign uuid, p_token text, p_x int, p_y int)
+-- ever changes the x/y of a player-character token whose character belongs to the caller, inside a running combat, and a character walks 10 m per turn.
+drop function if exists public.move_battle_token(uuid, text, int, int);
+
+create or replace function public.move_battle_token(p_campaign uuid, p_token text, p_x int, p_y int, p_cost int)
 returns void
 language plpgsql
 security definer
@@ -332,8 +334,12 @@ as $$
 declare
   uid uuid := auth.uid();
   b jsonb;
+  tok jsonb;
   v_cols int;
   v_rows int;
+  v_x int;
+  v_y int;
+  v_moved int;
 begin
   if uid is null then
     raise exception 'You are not signed in.';
@@ -349,20 +355,28 @@ begin
   if b is null or coalesce((b ->> 'active')::boolean, false) is not true then
     raise exception 'There is no combat running.';
   end if;
-  if not exists (
-    select 1 from jsonb_array_elements(b -> 'tokens') t where t ->> 'id' = p_token and t ->> 'kind' = 'pc'
-  ) then
+  select t into tok from jsonb_array_elements(b -> 'tokens') t where t ->> 'id' = p_token and t ->> 'kind' = 'pc' limit 1;
+  if tok is null then
     raise exception 'That token is not on the map.';
   end if;
 
   v_cols := coalesce((b ->> 'cols')::int, 24);
   v_rows := coalesce((b ->> 'rows')::int, 16);
+  v_x := greatest(0, least(v_cols - 2, p_x));
+  v_y := greatest(0, least(v_rows - 2, p_y));
+
+  -- A character walks 10 m per turn. The cost is the metres walked (at least the straight-line distance).
+  v_moved := coalesce((tok ->> 'moved')::int, 0)
+    + greatest(coalesce(p_cost, 0), abs(v_x - (tok ->> 'x')::int), abs(v_y - (tok ->> 'y')::int));
+  if v_moved > 10 then
+    raise exception 'You have no movement left this turn (10 m per turn).';
+  end if;
 
   update public.campaigns
   set battle = jsonb_set(b, '{tokens}', coalesce((
     select jsonb_agg(
       case when t ->> 'id' = p_token
-        then t || jsonb_build_object('x', greatest(0, least(v_cols - 2, p_x)), 'y', greatest(0, least(v_rows - 2, p_y)))
+        then t || jsonb_build_object('x', v_x, 'y', v_y, 'moved', v_moved)
         else t end)
     from jsonb_array_elements(b -> 'tokens') t
   ), '[]'::jsonb))
@@ -370,7 +384,46 @@ begin
 end;
 $$;
 
-revoke all on function public.move_battle_token(uuid, text, int, int) from public;
-revoke all on function public.move_battle_token(uuid, text, int, int) from anon;
-grant execute on function public.move_battle_token(uuid, text, int, int) to authenticated;
+revoke all on function public.move_battle_token(uuid, text, int, int, int) from public;
+revoke all on function public.move_battle_token(uuid, text, int, int, int) from anon;
+grant execute on function public.move_battle_token(uuid, text, int, int, int) to authenticated;
+
+-- A player's New Turn gives their own token its 10 m of walking back.
+create or replace function public.reset_battle_movement(p_campaign uuid, p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  b jsonb;
+begin
+  if uid is null then
+    raise exception 'You are not signed in.';
+  end if;
+  if not exists (
+    select 1 from public.campaign_characters cc
+    where cc.id::text = p_token and cc.campaign = p_campaign and cc.player = uid
+  ) then
+    raise exception 'You can only reset your own token.';
+  end if;
+
+  select c.battle into b from public.campaigns c where c.id = p_campaign for update;
+  if b is null then
+    return;
+  end if;
+
+  update public.campaigns
+  set battle = jsonb_set(b, '{tokens}', coalesce((
+    select jsonb_agg(case when t ->> 'id' = p_token then t || jsonb_build_object('moved', 0) else t end)
+    from jsonb_array_elements(b -> 'tokens') t
+  ), '[]'::jsonb))
+  where id = p_campaign;
+end;
+$$;
+
+revoke all on function public.reset_battle_movement(uuid, text) from public;
+revoke all on function public.reset_battle_movement(uuid, text) from anon;
+grant execute on function public.reset_battle_movement(uuid, text) to authenticated;
 

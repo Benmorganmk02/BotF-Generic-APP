@@ -544,12 +544,18 @@ export function subscribeToCampaign(campaignId: string, onChange: () => void): (
 
 /** A player moves their own token. Done through a database function (players cannot write the campaign row), which
  * only changes the position of a token that belongs to the caller. */
-export async function moveMyBattleToken(input: { campaignId: string; tokenId: string; x: number; y: number }): Promise<void> {
-  const { error } = await supabase.rpc('move_battle_token', { p_campaign: input.campaignId, p_token: input.tokenId, p_x: Math.round(input.x), p_y: Math.round(input.y) });
+export async function moveMyBattleToken(input: { campaignId: string; tokenId: string; x: number; y: number; cost: number }): Promise<void> {
+  const { error } = await supabase.rpc('move_battle_token', { p_campaign: input.campaignId, p_token: input.tokenId, p_x: Math.round(input.x), p_y: Math.round(input.y), p_cost: Math.round(input.cost) });
   if (error) {
     if (/move_battle_token|schema cache|does not exist/i.test(error.message)) throw new Error('Run supabase/campaign-battle.sql in the Supabase SQL editor first.');
     throw new Error(error.message);
   }
+}
+
+/** A player's New Turn: their own token gets its walking speed back. */
+export async function resetMyBattleMovement(input: { campaignId: string; tokenId: string }): Promise<void> {
+  const { error } = await supabase.rpc('reset_battle_movement', { p_campaign: input.campaignId, p_token: input.tokenId });
+  if (error) throw new Error(error.message);
 }
 
 /** GM: save the battle map state (start, end, or move tokens). */

@@ -6,7 +6,7 @@ import {
   removeCampaignCharacter, getFriendCharacters, createAndAssignCharacter,
   assignCampaignCharacter, invitePlayerToCampaign, addMyCharacterToCampaign,
   setCampaignCharacterVisibility, getVisibleCampaignCharacters, setCampaignCharacterNpc, duplicateCampaignCharacter, MAX_COPIES,
-  getBattle, saveBattle, subscribeToCampaign, moveMyBattleToken,
+  getBattle, saveBattle, subscribeToCampaign, moveMyBattleToken, resetMyBattleMovement,
 } from '../lib/api/social';
 import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType, VisibleCampaignCharacter } from '../lib/api/social';
 import { VISIBILITY_LEVELS, visibilityLabel } from '../utils/visibility';
@@ -16,7 +16,7 @@ import { saveLocalCharacter } from '../utils/storage';
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
 import NpcControl from '../components/campaign/NpcControl';
 import BattlePanel from '../components/campaign/BattlePanel';
-import { newBattle, addToken, moveToken, mergeRemotePositions } from '../utils/battle';
+import { newBattle, addToken, moveToken, limitMove, resetMovement, mergeRemotePositions, WALK_SPEED } from '../utils/battle';
 import type { BattleState } from '../utils/battle';
 import { usePersistedState } from '../utils/usePersistedState';
 import type { Character } from '../types/character';
@@ -550,13 +550,15 @@ export default function CampaignPage() {
   // The shared battle map. The GM writes it, a player moves only their own token, and everyone gets changes live.
   const [battle, setBattleState] = useState<BattleState | null>(null);
   const battleSave = useRef<{ timer?: number; latest?: BattleState | null }>({});
-  const playerMove = useRef<{ pending?: { id: string; x: number; y: number }; busy?: boolean; timer?: number }>({});
+  const playerMove = useRef<{ pending?: { id: string; x: number; y: number; cost: number }; busy?: boolean; timer?: number }>({});
   const battleRef = useRef<BattleState | null>(null); // always the newest map (a drag started earlier must not write an old copy)
   const applyBattle = (f: (prev: BattleState | null) => BattleState | null) => { const next = f(battleRef.current); battleRef.current = next; setBattleState(next); };
   const lastWrite = useRef(0);
   const movedHere = useRef<Set<string>>(new Set()); // tokens this device moved since the map last matched the server
   const refreshSeq = useRef(0);
   // Which NPC cards are collapsed to just a name (a layout preference, kept on this device)
+  // A player's active character: the one run from the controls on this page (kept on this device)
+  const [activeCharId, setActiveCharId] = usePersistedState<string>(`botv_active_char:${campaignId}`, '', 365 * 24 * 60 * 60 * 1000);
   const [collapsedNpcs, setCollapsedNpcs] = usePersistedState<Record<string, boolean>>(`botv_npc_collapsed:${campaignId}`, {}, 365 * 24 * 60 * 60 * 1000);
   const [removeTarget, setRemoveTarget] = useState<CampaignChar | null>(null);
   const [assignTarget, setAssignTarget] = useState<CampaignChar | null>(null);
@@ -666,7 +668,7 @@ export default function CampaignPage() {
   }, [campaignId]);
   const updateBattle = (next: BattleState | null) => {
     const cur = battleRef.current;
-    if (next && cur) for (const t of next.tokens) { const o = cur.tokens.find(x => x.id === t.id); if (o && (o.x !== t.x || o.y !== t.y)) movedHere.current.add(t.id); }
+    if (next && cur) for (const t of next.tokens) { const o = cur.tokens.find(x => x.id === t.id); if (o && (o.x !== t.x || o.y !== t.y || (o.moved ?? 0) !== (t.moved ?? 0))) movedHere.current.add(t.id); }
     applyBattle(() => next);
     battleSave.current.latest = next;
     if (!battleSave.current.timer) battleSave.current.timer = window.setTimeout(flushBattle, 150);
@@ -683,7 +685,7 @@ export default function CampaignPage() {
     m.busy = true;
     lastWrite.current = Date.now();
     try {
-      await moveMyBattleToken({ campaignId, tokenId: p.id, x: p.x, y: p.y });
+      await moveMyBattleToken({ campaignId, tokenId: p.id, x: p.x, y: p.y, cost: p.cost });
     } catch (e: any) {
       m.pending = undefined;
       toast.error(e.message ?? 'Could not move your token');
@@ -694,19 +696,46 @@ export default function CampaignPage() {
       if (m.pending && !m.timer) m.timer = window.setTimeout(flushMove, 100);
     }
   }, [campaignId]);
-  const moveOwnToken = (id: string, x: number, y: number) => {
-    applyBattle(prev => (prev ? moveToken(prev, id, x, y) : prev));
+  const moveOwnToken = (id: string, x: number, y: number): { x: number; y: number } | undefined => {
+    const cur = battleRef.current;
+    const t = cur?.tokens.find(k => k.id === id);
+    if (!cur || !t) return undefined;
+    // a player can only walk as far as the token has movement left this turn
+    const a = limitMove(cur, id, x, y);
+    if (a.limited) toast.info(a.cost === 0 ? 'No movement left this turn' : 'That is as far as you can walk this turn', { id: 'move-limit', description: `A character walks ${WALK_SPEED} m per turn. A New Turn gives it back.` });
+    if (a.x === t.x && a.y === t.y) return { x: t.x, y: t.y };
+    applyBattle(prev => (prev ? moveToken(prev, id, a.x, a.y) : prev));
     const m = playerMove.current;
     movedHere.current.add(id);
-    m.pending = { id, x, y };
+    m.pending = { id, x: a.x, y: a.y, cost: (m.pending?.id === id ? m.pending.cost : 0) + a.cost };
     lastWrite.current = Date.now();
     if (!m.timer && !m.busy) m.timer = window.setTimeout(flushMove, 150);
+    return { x: a.x, y: a.y };
+  };
+
+  // A character's New Turn (or Start Combat) gives its token the full walking speed again
+  const resetTokenMovement = (id: string) => {
+    const cur = battleRef.current;
+    const t = cur?.tokens.find(k => k.id === id);
+    if (!cur || !cur.active || !t || !(t.moved ?? 0)) return;
+    if (isGM) { updateBattle(resetMovement(cur, id)); return; }
+    if (!campaignId) return;
+    applyBattle(prev => (prev ? resetMovement(prev, id) : prev));
+    movedHere.current.add(id);
+    lastWrite.current = Date.now();
+    resetMyBattleMovement({ campaignId, tokenId: id }).catch(() => { /* the GM can give the movement back */ });
   };
   useEffect(() => () => { void flushMove(); }, [flushMove]);
   // a drag reports every square it enters; the GM moves any token, a player only their own
-  const moveToken_ = (id: string, x: number, y: number) => {
-    if (isGM) { const cur = battleRef.current; if (cur) updateBattle(moveToken(cur, id, x, y)); }
-    else moveOwnToken(id, x, y);
+  const moveToken_ = (id: string, x: number, y: number): { x: number; y: number } | undefined => {
+    if (!isGM) return moveOwnToken(id, x, y);
+    // the GM is never held to the walking speed (it is only counted), so a push or a dash is the GM's call
+    const cur = battleRef.current;
+    if (!cur) return undefined;
+    const next = moveToken(cur, id, x, y);
+    updateBattle(next);
+    const t = next.tokens.find(k => k.id === id);
+    return t ? { x: t.x, y: t.y } : undefined;
   };
 
   const toggleCombat = () => {
@@ -754,6 +783,9 @@ export default function CampaignPage() {
   const invitedMembers = data?.campaign.invitedMembers ?? [];
   // GM/NPC characters, and any character the GM marked as an NPC, that the GM can run from this page
   const npcs = (data?.characters ?? []).filter(c => (c.characterType === 'gm' || c.isNpc) && c.canEdit);
+  // A player's own characters here; one of them is "active" and gets the same combat controls the GM has for NPCs
+  const myChars = isGM ? [] : (data?.characters ?? []).filter(c => c.canEdit && !c.isUnassigned);
+  const activeChar = myChars.find(c => c.id === activeCharId) ?? myChars[0] ?? null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -819,6 +851,27 @@ export default function CampaignPage() {
           <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} />
         )}
 
+        {/* Player: the active character's health, stamina, mana, turns and attacks, without opening the sheet */}
+        {!isGM && activeChar && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Active character</h2>
+              <span className="text-xs text-muted-foreground">Changes save by themselves</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            {myChars.length > 1 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {myChars.map(c => (
+                  <Button key={c.id} size="sm" variant={c.id === activeChar.id ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setActiveCharId(c.id)}>{c.name}</Button>
+                ))}
+              </div>
+            )}
+            <NpcControl key={activeChar.id} npc={activeChar} accent="player" onTurnStart={() => resetTokenMovement(activeChar.id)} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${activeChar.id}`)}
+              collapsed={!!collapsedNpcs[activeChar.id]} onToggleCollapsed={() => setCollapsedNpcs(c => ({ ...c, [activeChar.id]: !c[activeChar.id] }))} />
+          </div>
+        )}
+
         {!data?.characters.length ? (
           <div className="text-center py-20 space-y-3 text-muted-foreground">
             <Sword className="h-12 w-12 mx-auto opacity-40" />
@@ -851,6 +904,8 @@ export default function CampaignPage() {
                 onVisibility={v => handleVisibility(char, v)}
                 onNpc={v => handleNpc(char, v)}
                 onDuplicate={() => setDupTarget(char)}
+                isActive={!isGM && activeChar?.id === char.id}
+                onMakeActive={!isGM && char.canEdit && !char.isUnassigned ? () => setActiveCharId(char.id) : undefined}
               />
             ))}
           </div>
@@ -868,7 +923,7 @@ export default function CampaignPage() {
               <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setCollapsedNpcs({})}>Expand all</Button>
             </div>
             <div className="grid grid-cols-1 gap-3">
-              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} onDuplicate={() => setDupTarget(n)}
+              {npcs.map(n => <NpcControl key={n.id} npc={n} onTurnStart={() => resetTokenMovement(n.id)} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} onDuplicate={() => setDupTarget(n)}
                 collapsed={!!collapsedNpcs[n.id]} onToggleCollapsed={() => setCollapsedNpcs(c => ({ ...c, [n.id]: !c[n.id] }))} />)}
             </div>
           </div>
@@ -950,7 +1005,7 @@ export default function CampaignPage() {
 }
 
 // ── Character Card ────────────────────────────────────────────────────────────
-function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility, onNpc, onDuplicate }: {
+function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility, onNpc, onDuplicate, isActive, onMakeActive }: {
   char: CampaignChar;
   isGM: boolean;
   onOpen: () => void;
@@ -959,6 +1014,8 @@ function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility, o
   onVisibility: (v: CharacterVisibility) => void;
   onNpc: (isNpc: boolean) => void;
   onDuplicate: () => void;
+  /** Player: this is the character run from the Active character controls. */
+  isActive?: boolean; onMakeActive?: () => void;
 }) {
   return (
     <div
@@ -1024,6 +1081,16 @@ function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility, o
             <span className="text-xs text-muted-foreground">NPC{char.characterType === 'gm' ? ' (by type)' : ''}</span>
             <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1 ml-auto" onClick={onDuplicate} title="Make copies of this character to track several">
               <Copy className="h-3 w-3" />Copies
+            </Button>
+          </div>
+        )}
+
+        {/* Player: run this character from the Active character controls (the GM's version of this is the NPC switch) */}
+        {onMakeActive && (
+          <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
+            <Button size="sm" variant={isActive ? 'default' : 'outline'} className="h-7 text-xs gap-1 flex-1" onClick={onMakeActive} disabled={isActive}
+              title="Run this character from the controls at the top of the page">
+              <UserCheck className="h-3 w-3" />{isActive ? 'Active character' : 'Make active'}
             </Button>
           </div>
         )}

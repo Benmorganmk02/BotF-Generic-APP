@@ -42,7 +42,7 @@ function bumpTurnStats(p: Character): Character {
   return { ...p, turnStats: { total: (p.turnStats?.total ?? 0) + 1, session: (p.turnStats?.session ?? 0) + 1 } };
 }
 
-export function CombatProvider({ children }: { children: ReactNode }) {
+export function CombatProvider({ children, onTurnStart }: { children: ReactNode; /** Runs when combat starts or a new turn begins (the campaign map gives the token its walking speed back). */ onTurnStart?: () => void }) {
   const { character, setCharacter } = useChar();
   // The combat state is kept across reloads (and app updates), per sheet; End Combat clears it
   const base = character.cloudId ?? character.id;
@@ -78,6 +78,7 @@ export function CombatProvider({ children }: { children: ReactNode }) {
     setTurn(1);
     refill();
     setCharacter(bumpTurnStats);
+    onTurnStart?.();
     toast.success('Combat started', { description: 'Turn 1.' });
   };
 
@@ -120,6 +121,7 @@ export function CombatProvider({ children }: { children: ReactNode }) {
     }
     setTurn(t => t + 1);
     refill();
+    onTurnStart?.();
   };
 
   return (

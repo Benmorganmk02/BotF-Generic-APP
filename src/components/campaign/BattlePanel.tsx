@@ -1,10 +1,10 @@
 import type { GetCampaignCharactersOutputType } from '../../lib/api/social';
 import type { BattleState, BattleToken } from '../../utils/battle';
-import { addToken, removeToken, setHostile, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
+import { addToken, removeToken, setHostile, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
 import BattleMap from './BattleMap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Plus, Swords, X } from 'lucide-react';
+import { Footprints, Maximize2, Minimize2, Plus, Swords, X } from 'lucide-react';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
 
@@ -15,9 +15,11 @@ const isNpcChar = (c: CampaignChar) => c.characterType === 'gm' || c.isNpc;
  * GM moves every token, adds characters to it, and sets whether each NPC is friendly or hostile. */
 export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd }: {
   battle: BattleState; characters: CampaignChar[]; isGM: boolean; viewerId: string;
-  onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => void; onEnd: () => void;
+  onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void;
 }) {
   const off = characters.filter(c => !battle.tokens.some(t => t.id === c.id));
+  const bigger = stepMapSize(battle, 1), smaller = stepMapSize(battle, -1);
+  const resize = (s: { cols: number; rows: number } | null) => { if (s) onChange(resizeBattle(battle, s.cols, s.rows)); };
   const add = (c: CampaignChar) => onChange(addToken(battle, {
     id: c.id, name: c.name, kind: isNpcChar(c) ? 'npc' : 'pc', owner: isNpcChar(c) ? undefined : c.playerId || undefined, hostile: isNpcChar(c) ? true : undefined,
   }));
@@ -28,9 +30,16 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
         <div className="flex items-center gap-2">
           <Swords className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Combat</h2>
-          <Badge variant="outline" className="text-[10px]">1 square = 1 m</Badge>
+          <Badge variant="outline" className="text-[10px]">1 square = 1 m · {battle.cols} × {battle.rows} m</Badge>
         </div>
-        {isGM && <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={onEnd}>End combat</Button>}
+        {isGM && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(resetMovement(battle))} title={`Everyone gets their ${WALK_SPEED} m of walking back`}><Footprints className="h-3 w-3" />New round</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => resize(smaller)} disabled={!smaller} title="Make the map smaller"><Minimize2 className="h-3 w-3" />Smaller map</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => resize(bigger)} disabled={!bigger} title="Make the map bigger"><Maximize2 className="h-3 w-3" />Bigger map</Button>
+            <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={onEnd}>End combat</Button>
+          </div>
+        )}
       </div>
 
       <BattleMap battle={battle} isGM={isGM} viewerId={viewerId}
@@ -50,7 +59,7 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.self} />You</span>
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.ally} />Allies</span>
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.enemy} />Enemies</span>
-            <span className="text-[11px]">Drag your own token to move it. The map updates live for everyone.</span>
+            <span className="text-[11px]">Drag your own token to move it: {WALK_SPEED} m of walking per turn. The map updates live for everyone.</span>
           </>
         )}
       </div>
@@ -64,6 +73,10 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
                   <Dot color={t.kind === 'pc' ? GM_COLORS.pc : t.hostile ? GM_COLORS.hostile : GM_COLORS.friendly} />
                   <span className="text-xs font-medium text-foreground flex-1 truncate">{t.name}</span>
                   <span className="text-[10px] text-muted-foreground">{t.kind === 'pc' ? 'Player' : t.hostile ? 'Hostile NPC' : 'Friendly NPC'}</span>
+                  {(t.moved ?? 0) > 0 && (
+                    <button className={`text-[10px] underline underline-offset-2 ${(t.moved ?? 0) > WALK_SPEED ? 'text-red-400' : 'text-muted-foreground'}`} title="Give this token its walking speed back"
+                      onClick={() => onChange(resetMovement(battle, t.id))}>{t.moved}/{WALK_SPEED} m · reset</button>
+                  )}
                   {t.kind === 'npc' && (
                     <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => onChange(setHostile(battle, t.id, !t.hostile))}>
                       Make {t.hostile ? 'friendly' : 'hostile'}

@@ -19,6 +19,8 @@ export interface BattleToken {
   /** Top-left square. */
   x: number;
   y: number;
+  /** Metres walked this turn (a character walks WALK_SPEED metres per turn). */
+  moved?: number;
 }
 
 export interface BattleState {
@@ -62,6 +64,12 @@ export function tokenColor(t: BattleToken, viewerId: string, isGM: boolean): str
 /** The GM sees every name; a player sees their own and their allies' names but an enemy is just a red marker. */
 export const showTokenName = (t: BattleToken, viewerId: string, isGM: boolean): boolean => isGM || playerRole(t, viewerId) !== 'enemy';
 
+/** How far a character can walk in one combat turn, in metres (squares). */
+export const WALK_SPEED = 10;
+/** Squares walked to get from one spot to another: a diagonal step counts as one. */
+export const stepCost = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+export const movementLeft = (t: BattleToken) => Math.max(0, WALK_SPEED - (t.moved ?? 0));
+
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 const overlaps = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) < TOKEN_SIZE && Math.abs(a.y - b.y) < TOKEN_SIZE;
 
@@ -83,8 +91,32 @@ export function addToken(b: BattleState, t: Omit<BattleToken, 'x' | 'y'>): Battl
   return { ...b, tokens: [...b.tokens, { ...t, ...spot }] };
 }
 
+/** Moves a token (onto the grid, whole squares) and counts the squares walked against its turn's movement. */
 export const moveToken = (b: BattleState, id: string, x: number, y: number): BattleState => ({
-  ...b, tokens: b.tokens.map(t => (t.id === id ? { ...t, x: clamp(Math.round(x), 0, b.cols - TOKEN_SIZE), y: clamp(Math.round(y), 0, b.rows - TOKEN_SIZE) } : t)),
+  ...b,
+  tokens: b.tokens.map(t => {
+    if (t.id !== id) return t;
+    const to = { x: clamp(Math.round(x), 0, b.cols - TOKEN_SIZE), y: clamp(Math.round(y), 0, b.rows - TOKEN_SIZE) };
+    return { ...t, ...to, moved: (t.moved ?? 0) + stepCost(t, to) };
+  }),
+});
+
+/** Where a token can actually get to: a player is held to the movement the token has left this turn, stopping
+ * partway along the line to where they asked. `cost` is the squares walked to get there. */
+export function limitMove(b: BattleState, id: string, x: number, y: number): { x: number; y: number; cost: number; limited: boolean } {
+  const t = b.tokens.find(k => k.id === id);
+  const to = { x: clamp(Math.round(x), 0, b.cols - TOKEN_SIZE), y: clamp(Math.round(y), 0, b.rows - TOKEN_SIZE) };
+  if (!t) return { ...to, cost: 0, limited: false };
+  const cost = stepCost(t, to), left = movementLeft(t);
+  if (cost <= left) return { ...to, cost, limited: false };
+  const f = left / cost;
+  const stop = { x: t.x + Math.trunc((to.x - t.x) * f), y: t.y + Math.trunc((to.y - t.y) * f) };
+  return { ...stop, cost: stepCost(t, stop), limited: true };
+}
+
+/** A new turn: the movement of one token (or of every token) is back to the full walking speed. */
+export const resetMovement = (b: BattleState, id?: string): BattleState => ({
+  ...b, tokens: b.tokens.map(t => (!id || t.id === id ? { ...t, moved: 0 } : t)),
 });
 /** While this device still has its own change on its way, other people's token moves are taken in without touching what
  * this device moved: the positions of every token not in `mine` come from `remote`. */
@@ -92,8 +124,20 @@ export const mergeRemotePositions = (local: BattleState, remote: BattleState, mi
   ...local,
   tokens: local.tokens.map(t => {
     const r = remote.tokens.find(x => x.id === t.id);
-    return r && !mine.has(t.id) && (r.x !== t.x || r.y !== t.y) ? { ...t, x: r.x, y: r.y } : t;
+    return r && !mine.has(t.id) && (r.x !== t.x || r.y !== t.y || (r.moved ?? 0) !== (t.moved ?? 0)) ? { ...t, x: r.x, y: r.y, moved: r.moved } : t;
   }),
+});
+/** The sizes the GM can step the map through (columns x rows, in metres), always 3:2. */
+export const MAP_SIZES: ReadonlyArray<readonly [number, number]> = [[24, 16], [30, 20], [36, 24], [48, 32], [60, 40]];
+/** The next bigger (dir 1) or smaller (dir -1) size than the map has now, or null at the end of the list. */
+export function stepMapSize(b: BattleState, dir: 1 | -1): { cols: number; rows: number } | null {
+  const next = dir === 1 ? MAP_SIZES.find(([c]) => c > b.cols) : [...MAP_SIZES].reverse().find(([c]) => c < b.cols);
+  return next ? { cols: next[0], rows: next[1] } : null;
+}
+/** Changes the grid size; a token that would fall off a smaller map is pulled back onto it. */
+export const resizeBattle = (b: BattleState, cols: number, rows: number): BattleState => ({
+  ...b, cols, rows,
+  tokens: b.tokens.map(t => ({ ...t, x: clamp(t.x, 0, cols - TOKEN_SIZE), y: clamp(t.y, 0, rows - TOKEN_SIZE) })),
 });
 export const removeToken = (b: BattleState, id: string): BattleState => ({ ...b, tokens: b.tokens.filter(t => t.id !== id) });
 export const setHostile = (b: BattleState, id: string, hostile: boolean): BattleState => ({ ...b, tokens: b.tokens.map(t => (t.id === id ? { ...t, hostile } : t)) });

@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 import type { BattleState, BattleToken } from '../../utils/battle';
-import { TOKEN_SIZE, tokenColor, showTokenName } from '../../utils/battle';
+import { TOKEN_SIZE, WALK_SPEED, movementLeft, playerRole, tokenColor, showTokenName } from '../../utils/battle';
 
 const short = (name: string) => (name.length > 9 ? `${name.slice(0, 8)}…` : name);
 
 /** The battle grid: 1 metre squares, characters as 2x2 tokens. The GM can drag every token, a player only their own. */
 export default function BattleMap({ battle, isGM, viewerId, canMove, onMove }: {
-  battle: BattleState; isGM: boolean; viewerId: string; canMove: (t: BattleToken) => boolean; onMove: (id: string, x: number, y: number) => void;
+  battle: BattleState; isGM: boolean; viewerId: string; canMove: (t: BattleToken) => boolean;
+  /** Reports a new square; returns where the token really ended up (a player can be held to their movement). */
+  onMove: (id: string, x: number, y: number) => { x: number; y: number } | void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -32,9 +34,9 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove }: {
     const move = (ev: PointerEvent) => {
       const next = clampPos(toGrid(ev.clientX, ev.clientY));
       if (next.x === last.x && next.y === last.y) return;
-      last = next;
+      const applied = onMove(id, next.x, next.y);
+      last = applied ? { x: applied.x, y: applied.y } : next;
       setDrag({ id, ...last });
-      onMove(id, last.x, last.y);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -55,6 +57,9 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove }: {
         const y = drag?.id === t.id ? drag.y : t.y;
         const color = tokenColor(t, viewerId, isGM);
         const named = showTokenName(t, viewerId, isGM);
+        // movement left this turn: a player sees their own, the GM sees it once a token has moved
+        const showMove = isGM ? (t.moved ?? 0) > 0 : t.kind === 'pc' && playerRole(t, viewerId) === 'self';
+        const left = movementLeft(t);
         return (
           <g key={t.id} data-token={t.id} data-color={color} transform={`translate(${x} ${y})`} onPointerDown={e => startDrag(e, t)}
             style={{ cursor: canMove(t) ? 'grab' : 'default' }}>
@@ -66,6 +71,11 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove }: {
             {named && (
               <text x={TOKEN_SIZE / 2} y={TOKEN_SIZE + 0.62} textAnchor="middle" fontSize={0.55} fill="#ffffff" stroke="#000000" strokeWidth={0.14} paintOrder="stroke" style={{ pointerEvents: 'none' }}>
                 {short(t.name)}
+              </text>
+            )}
+            {showMove && named && (
+              <text x={TOKEN_SIZE / 2} y={TOKEN_SIZE + 1.22} textAnchor="middle" fontSize={0.45} fill={left === 0 ? '#fca5a5' : '#e5e7eb'} stroke="#000000" strokeWidth={0.12} paintOrder="stroke" style={{ pointerEvents: 'none' }}>
+                {left} / {WALK_SPEED} m
               </text>
             )}
           </g>

@@ -66,8 +66,12 @@ function Vital({ label, value, max, onChange, onAdjust, barClass }: {
 /** A GM/NPC character controlled from the campaign page: its health, stamina and mana, and its attacks and
  * damage (the real weapon cards), without opening its sheet. Changes save by themselves to the campaign copy
  * (and the main character, like any save of that sheet). */
-export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = false, onToggleCollapsed }: {
+export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = false, onToggleCollapsed, accent = 'npc', onTurnStart }: {
   npc: CampaignChar; onOpenSheet: () => void; onDuplicate?: () => void;
+  /** NPC cards (the GM's) are amber; a player's own active character is the primary colour. */
+  accent?: 'npc' | 'player';
+  /** Runs when this character starts combat or a new turn (its walking speed on the map comes back). */
+  onTurnStart?: () => void;
   /** Collapsed: just the name. The card keeps saving while it is collapsed. */
   collapsed?: boolean; onToggleCollapsed?: () => void;
 }) {
@@ -175,8 +179,8 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = 
   return (
     <CharacterProvider character={char} setCharacter={setCharacter}>
     <DiceRollProvider>
-    <CombatProvider>
-    <div className="rounded-xl border border-amber-500/30 bg-card p-3 space-y-3">
+    <CombatProvider onTurnStart={onTurnStart}>
+    <div className={`rounded-xl border ${accent === 'player' ? 'border-primary/40' : 'border-amber-500/30'} bg-card p-3 space-y-3`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 min-w-0">
           <button onClick={onToggleCollapsed} aria-expanded={!collapsed} aria-label={collapsed ? `Expand ${char.name}` : `Collapse ${char.name}`}
