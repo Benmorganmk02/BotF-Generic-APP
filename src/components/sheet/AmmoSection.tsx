@@ -3,6 +3,7 @@ import { useChar } from '../../context/CharacterContext';
 import {
   AMMO, getAmmo, ammoDice, ammoKey, getAmmoCount, getGunCartridges, fmtMult, fmtAp,
 } from '../../utils/gunData';
+import { numberWidth } from '../../utils/numberWidth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -59,7 +60,7 @@ export default function AmmoSection() {
             </SelectContent>
           </Select>
         )}
-        <Input type="number" min={1} value={addQty} onChange={e => setAddQty(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 w-20 text-xs text-center" aria-label="Rounds to add" />
+        <Input type="number" min={1} value={addQty} onChange={e => setAddQty(Math.max(0, parseInt(e.target.value) || 0))} className="h-8 text-xs text-center" style={numberWidth(addQty, 3)} aria-label="Rounds to add" />
         <Button size="sm" className="h-8" onClick={add} disabled={!canAdd}><Plus className="h-4 w-4 mr-1" />Add ammo</Button>
       </div>
 
@@ -83,7 +84,7 @@ export default function AmmoSection() {
                       <span className="text-xs text-foreground">{r.label} <span className="text-muted-foreground text-[11px]">{fmtMult(r.multiplier)}, {fmtAp(r.ap)}</span></span>
                       <div className="flex items-center gap-1">
                         <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCount(key, n - 1)} disabled={n <= 0}><Minus className="h-3 w-3" /></Button>
-                        <Input type="number" min={0} value={n} onChange={e => setCount(key, parseInt(e.target.value))} className="h-6 w-16 text-xs text-center px-1" aria-label={`${a.label} ${r.label} rounds`} />
+                        <Input type="number" min={0} value={n} onChange={e => setCount(key, parseInt(e.target.value))} className="h-6 text-xs text-center px-1" style={numberWidth(n, 2)} aria-label={`${a.label} ${r.label} rounds`} />
                         <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCount(key, n + 1)}><Plus className="h-3 w-3" /></Button>
                       </div>
                     </div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
 import { InventoryItem } from '../../types/character';
 import { genId } from '../../utils/defaults';
+import { numberWidth } from '../../utils/numberWidth';
 import AmmoSection from '../sheet/AmmoSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,8 +41,8 @@ export default function InventoryPanel() {
 
       <div className="flex gap-2 flex-wrap">
         <Input value={name} onChange={e => setName(e.target.value)} placeholder="Item name..." className="flex-1 min-w-[140px]" />
-        <Input type="number" value={qty} onChange={e => setQty(+e.target.value)} min={1} className="w-16 text-center" />
-        <Input type="number" value={weight} onChange={e => setWeight(+e.target.value)} step={0.1} min={0} className="w-20 text-center" placeholder="kg" />
+        <Input type="number" value={qty} onChange={e => setQty(+e.target.value)} min={1} className="text-center" style={numberWidth(qty, 2)} />
+        <Input type="number" value={weight} onChange={e => setWeight(+e.target.value)} step={0.1} min={0} className="text-center" style={numberWidth(weight, 4)} placeholder="kg" />
         <Button onClick={addItem} disabled={!name.trim()} size="sm"><Plus className="h-4 w-4 mr-1" />Add</Button>
       </div>
 
@@ -58,10 +59,10 @@ export default function InventoryPanel() {
                     <Input value={item.name} onChange={e => updateItem(item.id, { name: e.target.value })} className="h-6 text-xs border-none bg-transparent p-0 focus-visible:ring-0" />
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <Input type="number" value={item.quantity} onChange={e => updateItem(item.id, { quantity: +e.target.value })} className="h-6 w-14 text-xs text-center mx-auto" min={1} />
+                    <Input type="number" value={item.quantity} onChange={e => updateItem(item.id, { quantity: +e.target.value })} className="h-6 text-xs text-center mx-auto" style={numberWidth(item.quantity, 2)} min={1} />
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <Input type="number" value={item.weight} step={0.1} onChange={e => updateItem(item.id, { weight: +e.target.value })} className="h-6 w-16 text-xs text-center mx-auto" min={0} />
+                    <Input type="number" value={item.weight} step={0.1} onChange={e => updateItem(item.id, { weight: +e.target.value })} className="h-6 text-xs text-center mx-auto" style={numberWidth(item.weight, 4)} min={0} />
                   </td>
                   <td className="px-2 py-1.5 text-center text-xs text-muted-foreground">{(item.quantity * item.weight).toFixed(1)}</td>
                   <td className="px-2 py-1.5 text-center">

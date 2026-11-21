@@ -140,7 +140,7 @@ function PowerOptionCard() {
 }
 
 // ── Spell Builder ─────────────────────────────────────────────────────────────
-function SpellBuilder({ takenIds, currentMana, onSpendMana, riverMana, onRiverChange }: {
+export function SpellBuilder({ takenIds, currentMana, onSpendMana, riverMana, onRiverChange }: {
   takenIds: Set<string>; currentMana: number; onSpendMana: (cost: number) => void;
   riverMana: number; onRiverChange: (n: number) => void;
 }) {

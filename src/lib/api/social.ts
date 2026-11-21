@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabaseClient';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { asVisibility } from '../../utils/visibility';
 import { nextCopyNames, freshCopyData } from '../../utils/duplicateCharacter';
+import { parseBattle } from '../../utils/battle';
+import type { BattleState } from '../../utils/battle';
 import type { CharacterVisibility } from '../../utils/visibility';
 
 const TYPE_TO_DB: Record<string, 'Normal' | 'GM/NPC'> = {
@@ -520,6 +523,43 @@ export async function setCampaignCharacterVisibility(input: { campaignCharacterI
   }
   if (!data || data.length === 0) throw new Error('You cannot change who sees this character.');
   return { success: true };
+}
+
+/** The campaign's battle map state (null when there is none). Players poll this to see combat start and tokens move. */
+export async function getBattle(input: { campaignId: string }): Promise<BattleState | null> {
+  const { data, error } = await supabase.from('campaigns').select('*').eq('id', input.campaignId).single();
+  if (error || !data) throw new Error('Campaign not found.');
+  return parseBattle((data as { battle?: unknown }).battle);
+}
+
+/** Live updates for the campaign row (the battle map): `onChange` runs the moment the GM changes it, the same way the
+ * duels push moves to the other player. Returns an unsubscribe function; call it on unmount. */
+export function subscribeToCampaign(campaignId: string, onChange: () => void): () => void {
+  const channel: RealtimeChannel = supabase
+    .channel(`campaign:${campaignId}`)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaigns', filter: `id=eq.${campaignId}` }, () => onChange())
+    .subscribe();
+  return () => { supabase.removeChannel(channel); };
+}
+
+/** A player moves their own token. Done through a database function (players cannot write the campaign row), which
+ * only changes the position of a token that belongs to the caller. */
+export async function moveMyBattleToken(input: { campaignId: string; tokenId: string; x: number; y: number }): Promise<void> {
+  const { error } = await supabase.rpc('move_battle_token', { p_campaign: input.campaignId, p_token: input.tokenId, p_x: Math.round(input.x), p_y: Math.round(input.y) });
+  if (error) {
+    if (/move_battle_token|schema cache|does not exist/i.test(error.message)) throw new Error('Run supabase/campaign-battle.sql in the Supabase SQL editor first.');
+    throw new Error(error.message);
+  }
+}
+
+/** GM: save the battle map state (start, end, or move tokens). */
+export async function saveBattle(input: { campaignId: string; battle: BattleState | null }): Promise<void> {
+  const { data, error } = await supabase.from('campaigns').update({ battle: input.battle }).eq('id', input.campaignId).select('id');
+  if (error) {
+    if (/battle/i.test(error.message)) throw new Error('Run supabase/campaign-battle.sql in the Supabase SQL editor first.');
+    throw error;
+  }
+  if (!data || data.length === 0) throw new Error('Only the GM can change the battle map.');
 }
 
 export const MAX_COPIES = 20;

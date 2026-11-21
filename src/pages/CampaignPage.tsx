@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -6,6 +6,7 @@ import {
   removeCampaignCharacter, getFriendCharacters, createAndAssignCharacter,
   assignCampaignCharacter, invitePlayerToCampaign, addMyCharacterToCampaign,
   setCampaignCharacterVisibility, getVisibleCampaignCharacters, setCampaignCharacterNpc, duplicateCampaignCharacter, MAX_COPIES,
+  getBattle, saveBattle, subscribeToCampaign, moveMyBattleToken,
 } from '../lib/api/social';
 import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType, VisibleCampaignCharacter } from '../lib/api/social';
 import { VISIBILITY_LEVELS, visibilityLabel } from '../utils/visibility';
@@ -14,6 +15,10 @@ import { getCharacters, saveCharacter } from '../lib/api/characters';
 import { saveLocalCharacter } from '../utils/storage';
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
 import NpcControl from '../components/campaign/NpcControl';
+import BattlePanel from '../components/campaign/BattlePanel';
+import { newBattle, addToken, moveToken, mergeRemotePositions } from '../utils/battle';
+import type { BattleState } from '../utils/battle';
+import { usePersistedState } from '../utils/usePersistedState';
 import type { Character } from '../types/character';
 import type { GetCharactersOutputType } from '../lib/api/characters';
 import { createDefaultCharacter } from '../utils/defaults';
@@ -27,7 +32,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Copy, ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail } from 'lucide-react';
+import { Swords, Copy, ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -542,6 +547,17 @@ export default function CampaignPage() {
   const [addMyCharOpen, setAddMyCharOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [dupTarget, setDupTarget] = useState<CampaignChar | null>(null);
+  // The shared battle map. The GM writes it, a player moves only their own token, and everyone gets changes live.
+  const [battle, setBattleState] = useState<BattleState | null>(null);
+  const battleSave = useRef<{ timer?: number; latest?: BattleState | null }>({});
+  const playerMove = useRef<{ pending?: { id: string; x: number; y: number }; busy?: boolean; timer?: number }>({});
+  const battleRef = useRef<BattleState | null>(null); // always the newest map (a drag started earlier must not write an old copy)
+  const applyBattle = (f: (prev: BattleState | null) => BattleState | null) => { const next = f(battleRef.current); battleRef.current = next; setBattleState(next); };
+  const lastWrite = useRef(0);
+  const movedHere = useRef<Set<string>>(new Set()); // tokens this device moved since the map last matched the server
+  const refreshSeq = useRef(0);
+  // Which NPC cards are collapsed to just a name (a layout preference, kept on this device)
+  const [collapsedNpcs, setCollapsedNpcs] = usePersistedState<Record<string, boolean>>(`botv_npc_collapsed:${campaignId}`, {}, 365 * 24 * 60 * 60 * 1000);
   const [removeTarget, setRemoveTarget] = useState<CampaignChar | null>(null);
   const [assignTarget, setAssignTarget] = useState<CampaignChar | null>(null);
   const [party, setParty] = useState<VisibleCampaignCharacter[]>([]);
@@ -557,6 +573,7 @@ export default function CampaignPage() {
       ]);
       setData(r);
       setFriends(fr.friends);
+      try { const b = await getBattle({ campaignId }); applyBattle(() => b); } catch { /* no battle yet */ }
       // Characters other people made visible to me (the GM already sees everyone)
       if (!r.campaign.isGM) {
         try { setParty(await getVisibleCampaignCharacters({ campaignId })); setPartyError(''); }
@@ -598,6 +615,111 @@ export default function CampaignPage() {
       toast.error(e.message ?? 'Failed to create the character');
       load();
     }
+  };
+
+  // Live, like the duels, for the GM and the players: the campaign row is pushed over Realtime, so combat starting and
+  // every token move shows up as it happens. A slow refresh stays as a safety net if the connection drops. While this
+  // device still has its own change on its way, a refresh waits, so an older copy never snaps the map back.
+  const hasData = !!data;
+  useEffect(() => {
+    if (!campaignId || !hasData) return;
+    let timer: number | undefined;
+    let alive = true;
+    const busy = () => !!(battleSave.current.timer || battleSave.current.latest !== undefined || playerMove.current.timer || playerMove.current.pending || playerMove.current.busy || Date.now() - lastWrite.current < 400);
+    const refresh = async () => {
+      timer = undefined;
+      const seq = ++refreshSeq.current;
+      try {
+        const b = await getBattle({ campaignId });
+        if (!alive || seq !== refreshSeq.current) return;
+        if (busy()) {
+          // our own change is still on its way: take in only what other people moved, keep ours, and look again soon
+          if (b) {
+            const mine = movedHere.current;
+            applyBattle(prev => (prev ? mergeRemotePositions(prev, b, mine) : prev));
+            if (battleSave.current.latest) battleSave.current.latest = mergeRemotePositions(battleSave.current.latest, b, mine);
+          }
+          timer = window.setTimeout(refresh, 450);
+          return;
+        }
+        movedHere.current.clear();
+        applyBattle(prev => (JSON.stringify(prev) === JSON.stringify(b) ? prev : b));
+      } catch { /* try again on the next change */ }
+    };
+    const kick = () => { if (timer === undefined) void refresh(); };
+    const unsubscribe = subscribeToCampaign(campaignId, kick);
+    const safetyNet = window.setInterval(kick, 20000);
+    const onVisible = () => { if (document.visibilityState === 'visible') kick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; window.clearTimeout(timer); unsubscribe(); window.clearInterval(safetyNet); document.removeEventListener('visibilitychange', onVisible); };
+  }, [campaignId, hasData]);
+
+  // GM: change the map now and save it at once, at most every 150 ms while dragging, so players watch it move
+  const flushBattle = useCallback(() => {
+    const s = battleSave.current;
+    if (s.timer) { window.clearTimeout(s.timer); s.timer = undefined; }
+    if (s.latest === undefined || !campaignId) return;
+    const next = s.latest;
+    s.latest = undefined;
+    lastWrite.current = Date.now();
+    saveBattle({ campaignId, battle: next }).then(() => { lastWrite.current = Date.now(); }).catch((e: Error) => toast.error(e.message ?? 'Could not save the battle map'));
+  }, [campaignId]);
+  const updateBattle = (next: BattleState | null) => {
+    const cur = battleRef.current;
+    if (next && cur) for (const t of next.tokens) { const o = cur.tokens.find(x => x.id === t.id); if (o && (o.x !== t.x || o.y !== t.y)) movedHere.current.add(t.id); }
+    applyBattle(() => next);
+    battleSave.current.latest = next;
+    if (!battleSave.current.timer) battleSave.current.timer = window.setTimeout(flushBattle, 150);
+  };
+  useEffect(() => () => flushBattle(), [flushBattle]);
+
+  // Player: move your own token. It moves on screen at once and is sent on at most every 150 ms while dragging.
+  const flushMove = useCallback(async () => {
+    const m = playerMove.current;
+    if (m.timer) { window.clearTimeout(m.timer); m.timer = undefined; }
+    if (m.busy || !m.pending || !campaignId) return;
+    const p = m.pending;
+    m.pending = undefined;
+    m.busy = true;
+    lastWrite.current = Date.now();
+    try {
+      await moveMyBattleToken({ campaignId, tokenId: p.id, x: p.x, y: p.y });
+    } catch (e: any) {
+      m.pending = undefined;
+      toast.error(e.message ?? 'Could not move your token');
+      try { const b = await getBattle({ campaignId }); applyBattle(() => b); } catch { /* keep what is shown */ }
+    } finally {
+      m.busy = false;
+      lastWrite.current = Date.now();
+      if (m.pending && !m.timer) m.timer = window.setTimeout(flushMove, 100);
+    }
+  }, [campaignId]);
+  const moveOwnToken = (id: string, x: number, y: number) => {
+    applyBattle(prev => (prev ? moveToken(prev, id, x, y) : prev));
+    const m = playerMove.current;
+    movedHere.current.add(id);
+    m.pending = { id, x, y };
+    lastWrite.current = Date.now();
+    if (!m.timer && !m.busy) m.timer = window.setTimeout(flushMove, 150);
+  };
+  useEffect(() => () => { void flushMove(); }, [flushMove]);
+  // a drag reports every square it enters; the GM moves any token, a player only their own
+  const moveToken_ = (id: string, x: number, y: number) => {
+    if (isGM) { const cur = battleRef.current; if (cur) updateBattle(moveToken(cur, id, x, y)); }
+    else moveOwnToken(id, x, y);
+  };
+
+  const toggleCombat = () => {
+    if (battle?.active) { updateBattle({ ...battle, active: false }); toast.info('Combat ended. The map is hidden; the tokens are kept for next time.'); return; }
+    // Start: keep the tokens from the last combat, or begin with every player's character
+    let next: BattleState = battle ? { ...battle, active: true } : newBattle();
+    if (!battle) {
+      for (const c of data?.characters ?? []) {
+        if (c.characterType !== 'gm' && !c.isNpc && !c.isUnassigned) next = addToken(next, { id: c.id, name: c.name, kind: 'pc', owner: c.playerId || undefined });
+      }
+    }
+    updateBattle(next);
+    toast.success('Combat started. Add NPCs to the map from the Combat panel.');
   };
 
   const handleNpc = async (char: CampaignChar, isNpc: boolean) => {
@@ -650,6 +772,9 @@ export default function CampaignPage() {
         <div className="flex items-center gap-2 shrink-0">
           {isGM && (
             <>
+              <Button size="sm" variant={battle?.active ? 'destructive' : 'default'} onClick={toggleCombat}>
+                <Swords className="h-4 w-4 mr-1" />{battle?.active ? 'End Combat' : 'Start Combat'}
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
                 <Mail className="h-4 w-4 mr-1" />Invite Player
               </Button>
@@ -690,6 +815,10 @@ export default function CampaignPage() {
 
       {/* Roster */}
       <div className="max-w-4xl mx-auto p-4 space-y-4">
+        {battle?.active && (
+          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} />
+        )}
+
         {!data?.characters.length ? (
           <div className="text-center py-20 space-y-3 text-muted-foreground">
             <Sword className="h-12 w-12 mx-auto opacity-40" />
@@ -735,9 +864,12 @@ export default function CampaignPage() {
               <h2 className="text-sm font-semibold text-foreground">NPC control</h2>
               <span className="text-xs text-muted-foreground">Changes save by themselves</span>
               <div className="flex-1 h-px bg-border" />
+              <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setCollapsedNpcs(Object.fromEntries(npcs.map(n => [n.id, true])))}>Collapse all</Button>
+              <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setCollapsedNpcs({})}>Expand all</Button>
             </div>
             <div className="grid grid-cols-1 gap-3">
-              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} onDuplicate={() => setDupTarget(n)} />)}
+              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} onDuplicate={() => setDupTarget(n)}
+                collapsed={!!collapsedNpcs[n.id]} onToggleCollapsed={() => setCollapsedNpcs(c => ({ ...c, [n.id]: !c[n.id] }))} />)}
             </div>
           </div>
         )}

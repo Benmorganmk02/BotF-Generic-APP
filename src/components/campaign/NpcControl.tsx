@@ -14,7 +14,10 @@ import TurnTracker from '../sheet/TurnTracker';
 import DiceResultModal from '../dice/DiceResultModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, ExternalLink, HeartPulse, Minus, Plus, Swords } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, ExternalLink, HeartPulse, Minus, Plus, Swords } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { usePersistedState } from '../../utils/usePersistedState';
+import { NpcMagic, NpcAbilities, NpcArmor } from './NpcTabs';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -63,9 +66,15 @@ function Vital({ label, value, max, onChange, onAdjust, barClass }: {
 /** A GM/NPC character controlled from the campaign page: its health, stamina and mana, and its attacks and
  * damage (the real weapon cards), without opening its sheet. Changes save by themselves to the campaign copy
  * (and the main character, like any save of that sheet). */
-export default function NpcControl({ npc, onOpenSheet, onDuplicate }: { npc: CampaignChar; onOpenSheet: () => void; onDuplicate?: () => void }) {
+export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = false, onToggleCollapsed }: {
+  npc: CampaignChar; onOpenSheet: () => void; onDuplicate?: () => void;
+  /** Collapsed: just the name. The card keeps saving while it is collapsed. */
+  collapsed?: boolean; onToggleCollapsed?: () => void;
+}) {
   const [char, setChar] = useState<Character | null>(() => parseCharacter(npc));
   const [status, setStatus] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
+  // Which tab (Weapons, Magic, Abilities, Armor) this NPC was last on, kept on this device
+  const [tab, setTab] = usePersistedState(`botv_npc_tab:${npc.id}`, 'weapons', 365 * 24 * 60 * 60 * 1000);
 
   const latest = useRef(char);
   latest.current = char;
@@ -169,11 +178,17 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate }: { npc: Cam
     <CombatProvider>
     <div className="rounded-xl border border-amber-500/30 bg-card p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="min-w-0">
-          <h3 className="font-bold text-foreground truncate">{char.name}</h3>
-          <p className="text-xs text-muted-foreground">Level {char.level}{char.race ? ` · ${char.race}` : ''}{char.archetype ? ` · ${char.archetype}` : ''}</p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button onClick={onToggleCollapsed} aria-expanded={!collapsed} aria-label={collapsed ? `Expand ${char.name}` : `Collapse ${char.name}`}
+            title={collapsed ? 'Expand' : 'Collapse to just the name'} className="text-muted-foreground hover:text-foreground shrink-0">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          <div className="min-w-0 cursor-pointer" onClick={onToggleCollapsed}>
+            <h3 className="font-bold text-foreground truncate">{char.name}</h3>
+            {!collapsed && <p className="text-xs text-muted-foreground">Level {char.level}{char.race ? ` · ${char.race}` : ''}{char.archetype ? ` · ${char.archetype}` : ''}</p>}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        {!collapsed && <div className="flex items-center gap-2">
           <span className={`text-[11px] ${status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`} aria-live="polite">{statusLabel}</span>
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={restore} title="Refill health, stamina and mana to full">
             <HeartPulse className="h-3 w-3" />Restore
@@ -186,8 +201,10 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate }: { npc: Cam
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openSheet}>
             <ExternalLink className="h-3 w-3" />Full sheet
           </Button>
-        </div>
+        </div>}
       </div>
+
+      {!collapsed && <>
 
       {/* Turns, actions and reactions: start and end combat, the turn counter, spend and refill */}
       <div className="rounded-md border border-border bg-muted/20 px-3 pb-2">
@@ -200,14 +217,26 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate }: { npc: Cam
         <Vital label="Mana" value={Math.min(char.mana.current, manaMax)} max={manaMax} onChange={setMana} onAdjust={adjust('mana', manaMax)} barClass="bg-blue-500" />
       </div>
 
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="flex items-center gap-1 text-xs font-semibold text-muted-foreground"><Swords className="h-3.5 w-3.5" />Weapons</p>
-          {/* One counter for every weapon: more opponents earn the multi-opponent bonuses (greatswords) */}
-          <OpponentCounter />
-        </div>
-        <NpcAttacks />
-      </div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="h-8 w-full">
+          <TabsTrigger value="weapons" className="flex-1 text-xs py-1">Weapons</TabsTrigger>
+          <TabsTrigger value="magic" className="flex-1 text-xs py-1">Magic</TabsTrigger>
+          <TabsTrigger value="abilities" className="flex-1 text-xs py-1">Abilities</TabsTrigger>
+          <TabsTrigger value="armor" className="flex-1 text-xs py-1">Armor</TabsTrigger>
+        </TabsList>
+        <TabsContent value="weapons" className="mt-2 space-y-1">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="flex items-center gap-1 text-xs font-semibold text-muted-foreground"><Swords className="h-3.5 w-3.5" />Weapons</p>
+            {/* One counter for every weapon: more opponents earn the multi-opponent bonuses (greatswords) */}
+            <OpponentCounter />
+          </div>
+          <NpcAttacks />
+        </TabsContent>
+        <TabsContent value="magic" className="mt-2"><NpcMagic /></TabsContent>
+        <TabsContent value="abilities" className="mt-2"><NpcAbilities /></TabsContent>
+        <TabsContent value="armor" className="mt-2"><NpcArmor /></TabsContent>
+      </Tabs>
+      </>}
       <DiceResultModal />
     </div>
     </CombatProvider>
