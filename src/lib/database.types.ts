@@ -60,6 +60,8 @@ export type Database = {
           character_data: string;
           /** How much of the character other people in the campaign can see (see utils/visibility.ts). */
           visibility: 'hidden' | 'basic' | 'stats' | 'full';
+          /** The GM marked this character as an NPC for the campaign (see supabase/campaign-npc.sql). */
+          is_npc: boolean;
           created_at: string;
           updated_at: string;
         };

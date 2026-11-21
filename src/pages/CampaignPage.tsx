@@ -5,7 +5,7 @@ import {
   getCampaignCharacters, getFriendRequests, addCharacterToCampaign,
   removeCampaignCharacter, getFriendCharacters, createAndAssignCharacter,
   assignCampaignCharacter, invitePlayerToCampaign, addMyCharacterToCampaign,
-  setCampaignCharacterVisibility, getVisibleCampaignCharacters,
+  setCampaignCharacterVisibility, getVisibleCampaignCharacters, setCampaignCharacterNpc, duplicateCampaignCharacter, MAX_COPIES,
 } from '../lib/api/social';
 import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType, VisibleCampaignCharacter } from '../lib/api/social';
 import { VISIBILITY_LEVELS, visibilityLabel } from '../utils/visibility';
@@ -26,7 +26,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Copy, ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -273,6 +274,7 @@ function CreateCharacterForm({ campaignId, friends, currentUser, onCreated, onCa
   const [playerName, setPlayerName] = useState('');
   const [charType, setCharType] = useState<'normal' | 'gm'>('normal');
   const [assigneeId, setAssigneeId] = useState('unassigned');
+  const [asNpc, setAsNpc] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const options = [
@@ -285,7 +287,7 @@ function CreateCharacterForm({ campaignId, friends, currentUser, onCreated, onCa
     setSaving(true);
     try {
       const char = createDefaultCharacter(charType, name.trim(), playerName.trim());
-      await createAndAssignCharacter({
+      const created = await createAndAssignCharacter({
         campaignId,
         assigneeId: assigneeId === 'unassigned' ? undefined : assigneeId,
         name: name.trim(),
@@ -293,6 +295,11 @@ function CreateCharacterForm({ campaignId, friends, currentUser, onCreated, onCa
         characterType: charType,
         data: JSON.stringify(char),
       });
+      // A normal character can be an NPC in this campaign without using the GM/NPC type
+      if (asNpc && charType === 'normal') {
+        try { await setCampaignCharacterNpc({ campaignCharacterId: created.campaignCharacterId, isNpc: true }); }
+        catch (e: any) { toast.error(e.message ?? 'Created, but could not mark it as an NPC.'); }
+      }
       const assigned = assigneeId === 'unassigned' ? 'unassigned' : options.find(o => o.id === assigneeId)?.label;
       toast.success(`"${name}" created${assigned && assigned !== 'unassigned' ? ` and assigned to ${assigned}` : ' (unassigned)'}!`);
       onCreated();
@@ -327,6 +334,12 @@ function CreateCharacterForm({ campaignId, friends, currentUser, onCreated, onCa
             </SelectContent>
           </Select>
         </div>
+        {charType === 'normal' && (
+          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+            <input type="checkbox" className="h-4 w-4 accent-primary" checked={asNpc} onChange={e => setAsNpc(e.target.checked)} />
+            <span>Make this an NPC in this campaign <span className="text-xs text-muted-foreground">(shows in NPC control)</span></span>
+          </label>
+        )}
         <div className="space-y-1.5">
           <Label>Assign to Player</Label>
           <Select value={assigneeId} onValueChange={setAssigneeId}>
@@ -471,6 +484,51 @@ function AddCharacterDialog({ open, onClose, campaignId, onAdded }: {
   );
 }
 
+// ── Make copies of a character (GM) ──────────────────────────────────────────
+function DuplicateDialog({ char, onClose, onDone }: { char: CampaignChar | null; onClose: () => void; onDone: () => void }) {
+  const [count, setCount] = useState(3);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (char) setCount(3); }, [char]);
+
+  const make = async () => {
+    if (!char) return;
+    setSaving(true);
+    try {
+      const r = await duplicateCampaignCharacter({ campaignCharacterId: char.id, copies: count });
+      toast.success(`Made ${r.names.length} cop${r.names.length === 1 ? 'y' : 'ies'}: ${r.names.join(', ')}.`);
+      onDone();
+      onClose();
+    } catch (e: any) { toast.error(e.message ?? 'Failed to make copies'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={!!char} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Make copies of "{char?.name}"</DialogTitle></DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label>How many copies?</Label>
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setCount(c => Math.max(1, c - 1))} disabled={count <= 1}>-</Button>
+              <Input type="number" min={1} max={MAX_COPIES} value={count} onChange={e => setCount(Math.max(1, Math.min(MAX_COPIES, parseInt(e.target.value) || 1)))} className="h-8 w-20 text-center" aria-label="Number of copies" />
+              <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setCount(c => Math.min(MAX_COPIES, c + 1))} disabled={count >= MAX_COPIES}>+</Button>
+              <span className="text-xs text-muted-foreground">up to {MAX_COPIES}</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Each copy is its own NPC in this campaign with the same stats and weapons, full health, stamina and mana, and its own name ("{char?.name.replace(/\s+\d+$/, '')} 2", "... 3"). Copies are not linked to the original, so changing one never changes the others.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={make} disabled={saving}>{saving ? 'Making...' : <><Copy className="h-4 w-4 mr-1" />Make {count} cop{count === 1 ? 'y' : 'ies'}</>}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Campaign Page ─────────────────────────────────────────────────────────────
 export default function CampaignPage() {
   const { campaignId } = useParams<{ campaignId: string }>();
@@ -483,6 +541,7 @@ export default function CampaignPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addMyCharOpen, setAddMyCharOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [dupTarget, setDupTarget] = useState<CampaignChar | null>(null);
   const [removeTarget, setRemoveTarget] = useState<CampaignChar | null>(null);
   const [assignTarget, setAssignTarget] = useState<CampaignChar | null>(null);
   const [party, setParty] = useState<VisibleCampaignCharacter[]>([]);
@@ -521,13 +580,17 @@ export default function CampaignPage() {
 
   // Create a brand-new character for yourself right here: it is saved to your account like any other character and
   // added to this campaign, then opened.
-  const handleCreateMine = async (char: Character) => {
+  const handleCreateMine = async (char: Character, opts?: { npc: boolean }) => {
     if (!campaignId) return;
     try {
       saveLocalCharacter(char);
       const saved = await saveCharacter({ name: char.name, characterType: char.characterType, level: char.level, data: JSON.stringify(char) });
       saveLocalCharacter({ ...char, cloudId: saved.cloudId, cloudSyncedAt: saved.updatedAt });
       const added = await addMyCharacterToCampaign({ campaignId, characterId: saved.cloudId });
+      if (opts?.npc) {
+        try { await setCampaignCharacterNpc({ campaignCharacterId: added.campaignCharacterId, isNpc: true }); }
+        catch (e: any) { toast.error(e.message ?? 'Created, but could not mark it as an NPC.'); }
+      }
       setCreateOpen(false);
       toast.success(`"${char.name}" created and added to the campaign!`);
       navigate(`/campaign/${campaignId}/character/${added.campaignCharacterId}`);
@@ -535,6 +598,14 @@ export default function CampaignPage() {
       toast.error(e.message ?? 'Failed to create the character');
       load();
     }
+  };
+
+  const handleNpc = async (char: CampaignChar, isNpc: boolean) => {
+    try {
+      await setCampaignCharacterNpc({ campaignCharacterId: char.id, isNpc });
+      setData(d => d ? { ...d, characters: d.characters.map(c => c.id === char.id ? { ...c, isNpc } : c) } : d);
+      toast.success(isNpc ? `"${char.name}" is now an NPC. Find it under NPC control.` : `"${char.name}" is no longer marked as an NPC.`);
+    } catch (e: any) { toast.error(e.message ?? 'Failed to change the NPC mark'); }
   };
 
   const handleVisibility = async (char: CampaignChar, visibility: CharacterVisibility) => {
@@ -559,8 +630,8 @@ export default function CampaignPage() {
   const isGM = data?.campaign.isGM ?? false;
   const isInvitedMember = data?.campaign.isInvitedMember ?? false;
   const invitedMembers = data?.campaign.invitedMembers ?? [];
-  // GM/NPC characters the GM can run from this page
-  const npcs = (data?.characters ?? []).filter(c => c.characterType === 'gm' && c.canEdit);
+  // GM/NPC characters, and any character the GM marked as an NPC, that the GM can run from this page
+  const npcs = (data?.characters ?? []).filter(c => (c.characterType === 'gm' || c.isNpc) && c.canEdit);
 
   return (
     <div className="min-h-screen bg-background">
@@ -649,6 +720,8 @@ export default function CampaignPage() {
                 onRemove={() => setRemoveTarget(char)}
                 onAssign={() => setAssignTarget(char)}
                 onVisibility={v => handleVisibility(char, v)}
+                onNpc={v => handleNpc(char, v)}
+                onDuplicate={() => setDupTarget(char)}
               />
             ))}
           </div>
@@ -664,7 +737,7 @@ export default function CampaignPage() {
               <div className="flex-1 h-px bg-border" />
             </div>
             <div className="grid grid-cols-1 gap-3">
-              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} />)}
+              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} onDuplicate={() => setDupTarget(n)} />)}
             </div>
           </div>
         )}
@@ -711,8 +784,10 @@ export default function CampaignPage() {
         />
       )}
 
+      {isGM && <DuplicateDialog char={dupTarget} onClose={() => setDupTarget(null)} onDone={load} />}
+
       {campaignId && (isGM || isInvitedMember) && (
-        <CreateCharacterDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreateMine} allowGM={isGM} />
+        <CreateCharacterDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreateMine} allowGM={isGM} npcOption={isGM} />
       )}
 
       <AssignDialog
@@ -743,13 +818,15 @@ export default function CampaignPage() {
 }
 
 // ── Character Card ────────────────────────────────────────────────────────────
-function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility }: {
+function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility, onNpc, onDuplicate }: {
   char: CampaignChar;
   isGM: boolean;
   onOpen: () => void;
   onRemove: () => void;
   onAssign: () => void;
   onVisibility: (v: CharacterVisibility) => void;
+  onNpc: (isNpc: boolean) => void;
+  onDuplicate: () => void;
 }) {
   return (
     <div
@@ -801,10 +878,23 @@ function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility }:
           <Badge className={`text-xs border ${TYPE_COLORS[char.characterType] ?? ''}`}>
             {TYPE_LABELS[char.characterType] ?? char.characterType}
           </Badge>
+          {(char.characterType === 'gm' || char.isNpc) && <Badge variant="outline" className="text-[10px]">NPC</Badge>}
           <span className="text-xs text-muted-foreground">Level {char.level}</span>
         </div>
 
         {!char.canEdit && <p className="text-xs text-muted-foreground italic">View only</p>}
+
+        {/* GM: run this character as an NPC from the NPC control section (GM/NPC characters always are) */}
+        {isGM && char.canEdit && (
+          <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
+            <Switch checked={char.characterType === 'gm' || char.isNpc} disabled={char.characterType === 'gm'} onCheckedChange={onNpc}
+              aria-label="NPC" title={char.characterType === 'gm' ? 'GM/NPC characters are always NPCs' : 'Run this character from NPC control'} />
+            <span className="text-xs text-muted-foreground">NPC{char.characterType === 'gm' ? ' (by type)' : ''}</span>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1 ml-auto" onClick={onDuplicate} title="Make copies of this character to track several">
+              <Copy className="h-3 w-3" />Copies
+            </Button>
+          </div>
+        )}
 
         {/* Who else in the campaign can see this character (the GM and the player always can) */}
         {char.canEdit && (

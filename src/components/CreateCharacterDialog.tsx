@@ -10,18 +10,21 @@ import { MAGIC_SOURCES, MAGIC_SOURCE_INFO, FABRICATED_NAMES } from '../utils/mag
 import { WORLDS, getWorld, raceAllowed, backgroundAllowed } from '../data/worlds';
 
 interface Props {
-  open: boolean; onClose: () => void; onCreate: (char: Character) => void;
+  open: boolean; onClose: () => void; onCreate: (char: Character, opts?: { npc: boolean }) => void;
   /** False hides the GM/NPC type, for players creating a character in a campaign. */
   allowGM?: boolean;
+  /** Show a box to add the new character as an NPC in the campaign it is being created for. */
+  npcOption?: boolean;
 }
 
 type Mode = 'archetype' | 'custom';
 const DEFAULT_WORLD = WORLDS[0].id;
 
-export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM = true }: Props) {
+export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM = true, npcOption = false }: Props) {
   const [name, setName] = useState('');
   const [player, setPlayer] = useState('');
   const [type, setType] = useState<'normal' | 'gm'>('normal');
+  const [npc, setNpc] = useState(false);
   const [worldId, setWorldId] = useState(DEFAULT_WORLD);
   const [mode, setMode] = useState<Mode>('archetype');
   const [archetypeId, setArchetypeId] = useState('');
@@ -43,7 +46,7 @@ export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM
   const background = backgrounds.find(b => b.id === backgroundId);
 
   const reset = () => {
-    setName(''); setPlayer(''); setType('normal'); setWorldId(DEFAULT_WORLD);
+    setName(''); setPlayer(''); setType('normal'); setNpc(false); setWorldId(DEFAULT_WORLD);
     setMode('archetype'); setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource('');
   };
   const clearPicks = () => { setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource(''); };
@@ -69,7 +72,7 @@ export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM
       background: background?.name,
       magicSource: archetype?.id === 'caster' && magicSource ? magicSource : undefined,
     });
-    onCreate(char);
+    onCreate(char, npcOption && type === 'normal' ? { npc } : undefined);
     reset();
     onClose();
   };
@@ -87,6 +90,12 @@ export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM
             <Label>Player Name</Label>
             <Input value={player} onChange={e => setPlayer(e.target.value)} placeholder="Your name..." />
           </div>
+          {npcOption && type === 'normal' && (
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+              <input type="checkbox" className="h-4 w-4 accent-primary" checked={npc} onChange={e => setNpc(e.target.checked)} />
+              <span>Add as an NPC in this campaign <span className="text-xs text-muted-foreground">(shows in NPC control)</span></span>
+            </label>
+          )}
           {allowGM && (
             <div className="space-y-1">
               <Label>Character Type</Label>

@@ -14,7 +14,7 @@ import TurnTracker from '../sheet/TurnTracker';
 import DiceResultModal from '../dice/DiceResultModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ExternalLink, HeartPulse, Minus, Plus, Swords } from 'lucide-react';
+import { Copy, ExternalLink, HeartPulse, Minus, Plus, Swords } from 'lucide-react';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -63,7 +63,7 @@ function Vital({ label, value, max, onChange, onAdjust, barClass }: {
 /** A GM/NPC character controlled from the campaign page: its health, stamina and mana, and its attacks and
  * damage (the real weapon cards), without opening its sheet. Changes save by themselves to the campaign copy
  * (and the main character, like any save of that sheet). */
-export default function NpcControl({ npc, onOpenSheet }: { npc: CampaignChar; onOpenSheet: () => void }) {
+export default function NpcControl({ npc, onOpenSheet, onDuplicate }: { npc: CampaignChar; onOpenSheet: () => void; onDuplicate?: () => void }) {
   const [char, setChar] = useState<Character | null>(() => parseCharacter(npc));
   const [status, setStatus] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
 
@@ -178,6 +178,11 @@ export default function NpcControl({ npc, onOpenSheet }: { npc: CampaignChar; on
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={restore} title="Refill health, stamina and mana to full">
             <HeartPulse className="h-3 w-3" />Restore
           </Button>
+          {onDuplicate && (
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onDuplicate} title="Make copies of this character to track several">
+              <Copy className="h-3 w-3" />Copies
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openSheet}>
             <ExternalLink className="h-3 w-3" />Full sheet
           </Button>

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { asVisibility } from '../../utils/visibility';
+import { nextCopyNames, freshCopyData } from '../../utils/duplicateCharacter';
 import type { CharacterVisibility } from '../../utils/visibility';
 
 const TYPE_TO_DB: Record<string, 'Normal' | 'GM/NPC'> = {
@@ -253,6 +254,8 @@ export interface GetCampaignCharactersOutputType {
     isUnassigned: boolean;
     /** How much of this character the rest of the campaign can see. */
     visibility: CharacterVisibility;
+    /** The GM marked it as an NPC for this campaign (GM/NPC characters count as NPCs without it). */
+    isNpc: boolean;
   }[];
 }
 
@@ -307,6 +310,7 @@ export async function getCampaignCharacters(input: { campaignId: string }): Prom
       canEdit,
       isUnassigned,
       visibility: asVisibility((cc as { visibility?: unknown }).visibility),
+      isNpc: (cc as { is_npc?: unknown }).is_npc === true,
     };
   });
 
@@ -515,6 +519,53 @@ export async function setCampaignCharacterVisibility(input: { campaignCharacterI
     throw error;
   }
   if (!data || data.length === 0) throw new Error('You cannot change who sees this character.');
+  return { success: true };
+}
+
+export const MAX_COPIES = 20;
+
+/** GM: make copies of a campaign character so several can be tracked (five bandits) without building each one. Each
+ * copy is its own campaign character owned by the GM, with full health and no link to the original. Copies of a
+ * normal character are marked as NPCs so they show in NPC control. */
+export async function duplicateCampaignCharacter(input: { campaignCharacterId: string; copies: number }): Promise<{ names: string[] }> {
+  const user = await requireUser();
+  const copies = Math.max(1, Math.min(MAX_COPIES, Math.floor(input.copies) || 1));
+  const { data: cc } = await supabase.from('campaign_characters').select('*').eq('id', input.campaignCharacterId).single();
+  if (!cc) throw new Error('Campaign character not found.');
+  const { data: campaign } = await supabase.from('campaigns').select('*').eq('id', cc.campaign).single();
+  if (!campaign || campaign.gm !== user.id) throw new Error('Only the GM can make copies.');
+
+  const { data: siblings } = await supabase.from('campaign_characters').select('character_name').eq('campaign', cc.campaign);
+  const names = nextCopyNames(cc.character_name ?? 'NPC', (siblings ?? []).map(s => s.character_name ?? ''), copies);
+
+  let gmType = false;
+  try { gmType = JSON.parse(cc.character_data ?? '{}').characterType === 'gm'; } catch { /* treat as a normal character */ }
+  const rows = names.map(n => ({
+    character_name: n,
+    campaign: cc.campaign,
+    player: user.id,
+    character_data: freshCopyData(cc.character_data ?? '{}', n),
+    ...(gmType ? {} : { is_npc: true }),
+  }));
+  const { error } = await supabase.from('campaign_characters').insert(rows);
+  if (error) {
+    if (/is_npc/i.test(error.message)) throw new Error('Run supabase/campaign-npc.sql in the Supabase SQL editor first.');
+    throw error;
+  }
+  return { names };
+}
+
+/** Mark a campaign character as an NPC (or not) for this campaign. */
+export async function setCampaignCharacterNpc(input: { campaignCharacterId: string; isNpc: boolean }): Promise<{ success: boolean }> {
+  const { data, error } = await supabase.from('campaign_characters')
+    .update({ is_npc: input.isNpc })
+    .eq('id', input.campaignCharacterId)
+    .select('id');
+  if (error) {
+    if (/is_npc/i.test(error.message)) throw new Error('Run supabase/campaign-npc.sql in the Supabase SQL editor first.');
+    throw error;
+  }
+  if (!data || data.length === 0) throw new Error('You cannot change this character.');
   return { success: true };
 }
 
