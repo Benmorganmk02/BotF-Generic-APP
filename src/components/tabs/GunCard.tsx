@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import { usePersistedState } from '../../utils/usePersistedState';
 
 /** Damage by hit tier: graze = the base dice; flesh x round multiplier; solid x (multiplier + 0.5); vital x (multiplier + 2). */
-function GunDamageButton({ label, ammo, round }: { label: string; ammo: Ammo; round: AmmoRound }) {
+export function GunDamageButton({ label, ammo, round }: { label: string; ammo: Ammo; round: AmmoRound }) {
   const { rollDamage, log } = useDiceRoll();
   const [open, setOpen] = useState(false);
   const [tier, setTier] = useState<HitTierKey>('graze');

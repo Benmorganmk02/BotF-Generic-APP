@@ -588,6 +588,8 @@ export async function syncCampaignCharacterToOriginal(input: {
   updateMain?: boolean;
   /** Only these other campaign copies (default: all of them). */
   copyIds?: string[];
+  /** Leave these other campaign copies alone. */
+  skipCopyIds?: string[];
 }): Promise<SyncToOriginalResult> {
   const { data: cc } = await supabase.from('campaign_characters').select('original_character').eq('id', input.campaignCharacterId).maybeSingle();
   const originalId = cc?.original_character ?? undefined;
@@ -613,7 +615,7 @@ export async function syncCampaignCharacterToOriginal(input: {
 
   let otherCopiesUpdated = 0;
   const { data: others } = await supabase.from('campaign_characters').select('id').eq('original_character', originalId).neq('id', input.campaignCharacterId);
-  for (const o of (others ?? []).filter(x => !input.copyIds || input.copyIds.includes(x.id))) {
+  for (const o of (others ?? []).filter(x => (!input.copyIds || input.copyIds.includes(x.id)) && !(input.skipCopyIds ?? []).includes(x.id))) {
     const { error: e } = await supabase.from('campaign_characters')
       .update({ character_name: input.name, character_data: withCloudId(input.data, o.id), updated_at: updatedAt })
       .eq('id', o.id);

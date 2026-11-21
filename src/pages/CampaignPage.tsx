@@ -13,6 +13,7 @@ import type { CharacterVisibility } from '../utils/visibility';
 import { getCharacters, saveCharacter } from '../lib/api/characters';
 import { saveLocalCharacter } from '../utils/storage';
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
+import NpcControl from '../components/campaign/NpcControl';
 import type { Character } from '../types/character';
 import type { GetCharactersOutputType } from '../lib/api/characters';
 import { createDefaultCharacter } from '../utils/defaults';
@@ -558,6 +559,8 @@ export default function CampaignPage() {
   const isGM = data?.campaign.isGM ?? false;
   const isInvitedMember = data?.campaign.isInvitedMember ?? false;
   const invitedMembers = data?.campaign.invitedMembers ?? [];
+  // GM/NPC characters the GM can run from this page
+  const npcs = (data?.characters ?? []).filter(c => c.characterType === 'gm' && c.canEdit);
 
   return (
     <div className="min-h-screen bg-background">
@@ -648,6 +651,21 @@ export default function CampaignPage() {
                 onVisibility={v => handleVisibility(char, v)}
               />
             ))}
+          </div>
+        )}
+
+        {/* GM: run the NPCs' health, stamina, mana and attacks from here */}
+        {isGM && npcs.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Crown className="h-4 w-4 text-amber-400" />
+              <h2 className="text-sm font-semibold text-foreground">NPC control</h2>
+              <span className="text-xs text-muted-foreground">Changes save by themselves</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              {npcs.map(n => <NpcControl key={n.id} npc={n} onOpenSheet={() => navigate(`/campaign/${campaignId}/character/${n.id}`)} />)}
+            </div>
           </div>
         )}
 

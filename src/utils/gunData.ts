@@ -1,4 +1,5 @@
 import type { Character, Firearm, Proficiency, InjuryLevel } from '../types/character';
+import { getProfDice, effAttr } from './mechanics';
 import { INJURY_LEVELS, INJURY_LEVEL_ORDER } from './armorInjury';
 
 // ── Firearm proficiencies ─────────────────────────────────────────────────────
@@ -338,6 +339,14 @@ export function resolveGunProf(c: Character, g: Firearm): ResolvedGunProf {
   return pick
     ? { key: pick.key, penalty: owned ? pick.penalty : 0, reason: owned ? pick.reason : undefined, prof: owned ? find(pick.key) : undefined, fits, overridden: false }
     : { penalty: 0, fits, overridden: false };
+}
+
+/** Attack dice for a gun: the proficiency's dice (less any fit penalty) or 3 + INT/WIS without one, plus the weapon bonus. */
+export function getGunAttackDice(c: Character, g: Firearm): number {
+  const fit = resolveGunProf(c, g);
+  const bonus = getGunWeaponBonus(g);
+  if (fit.prof) return Math.max(0, getProfDice(c, fit.prof) - fit.penalty) + bonus;
+  return Math.max(0, 3 + effAttr(c, g.mentalStat ?? 'int')) + bonus;
 }
 
 // ── Hit result ────────────────────────────────────────────────────────────────

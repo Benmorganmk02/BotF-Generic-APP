@@ -18,6 +18,7 @@ import ProficienciesTab from './tabs/ProficienciesTab';
 import ArmorEquipmentTab from './tabs/ArmorEquipmentTab';
 import MagicTab from './tabs/MagicTab';
 import TurnTracker from './sheet/TurnTracker';
+import { changeSig } from '../utils/charSig';
 import SaveTargetsMenu from './sheet/SaveTargetsMenu';
 import type { SyncTarget } from './sheet/SaveTargetsMenu';
 import DiceRollPanel from './dice/DiceRollPanel';
@@ -54,8 +55,6 @@ function CompactPool({ label, value, isGM }: { label: string; value: number; isG
 const AUTOSAVE_DELAY_MS = 2500;
 const AUTOSAVE_RETRY_MS = 20000;
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error';
-/** What counts as a change worth saving: the character without its cloud bookkeeping. */
-const changeSig = (c: Character) => JSON.stringify({ ...c, cloudId: undefined, cloudSyncedAt: undefined });
 
 export default function CharacterSheet({ initialCharacter, onSave, onHome, campaignMode, readOnly, syncTargets, syncKey }: Props) {
   const [character, setCharacterState] = useState<Character>(initialCharacter);
