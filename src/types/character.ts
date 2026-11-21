@@ -46,6 +46,8 @@ export interface Proficiency {
   /** Set when this is one of the fixed sword proficiencies (see swordData.ts) --
    * name, stat lock, level cap and allowed weapon components all come from it. */
   swordKey?: string;
+  /** Set on the placeholder basic Melee proficiency: any weapon that is not a sword can be linked to it (see ProficienciesTab). */
+  basicMelee?: boolean;
   /** Set when this is one of the fixed firearm proficiencies (see gunData.ts). */
   gunKey?: string;
   /** Marks the automatic vocation that fabricates the half of magic that is not innate. */
@@ -187,6 +189,10 @@ export interface Firearm {
   cycling: string;
   /** When cycling is 'automatic': the fire modes the gun can switch between (see AUTO_MODES), at least one. */
   autoModes?: string[];
+  /** Magazine size in rounds. Missing = the default for the reload method (see defaultMagazineSize in gunData.ts). */
+  magazineSize?: number;
+  /** Rounds currently loaded. Missing = a full magazine. Each attack uses one; Reload refills it. */
+  rounds?: number;
   /** INT or WIS for the attack roll when no firearm proficiency has been taken (the proficiency's own choice wins). Unproficient attack = 3 + this + weapon bonus. */
   mentalStat?: 'int' | 'wis';
   /** Interchangeable attachments, slot id -> option id. */
@@ -195,6 +201,8 @@ export interface Firearm {
 
 export interface Character {
   id: string; cloudId?: string;
+  /** When this copy was last in step with the cloud row (ISO time), used to notice campaign edits made elsewhere. */
+  cloudSyncedAt?: string;
   name: string; player: string; level: number;
   race: string; bodyType: string; age: string;
   /** Picked in the create dialog (see data/worlds.ts): world id, archetype name ("Custom" when freely built), background name. */
@@ -206,6 +214,8 @@ export interface Character {
   berzerkActive: boolean; berzerkRound: number;
   /** Turns taken in combat: all-time `total`, and `session` (the player resets it). Missing on older characters (counts as 0). */
   turnStats?: { total: number; session: number };
+  /** Ammo in the inventory, rounds per cartridge:round type key (see ammoKey in gunData.ts). Reload on a gun draws from it. */
+  ammoStock?: Record<string, number>;
   bonusPoints: { attribute: number; skill: number; ability: number; proficiency: number };
   modifiers: { attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>; abilities: number };
   attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>;

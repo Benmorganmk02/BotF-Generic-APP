@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
+import { asVisibility } from '../../utils/visibility';
+import type { CharacterVisibility } from '../../utils/visibility';
 
 const TYPE_TO_DB: Record<string, 'Normal' | 'GM/NPC'> = {
   normal: 'Normal',
@@ -249,6 +251,8 @@ export interface GetCampaignCharactersOutputType {
     playerEmail: string;
     canEdit: boolean;
     isUnassigned: boolean;
+    /** How much of this character the rest of the campaign can see. */
+    visibility: CharacterVisibility;
   }[];
 }
 
@@ -302,6 +306,7 @@ export async function getCampaignCharacters(input: { campaignId: string }): Prom
       playerEmail: isUnassigned ? '' : playerProfiles.get(playerId)?.email ?? playerId,
       canEdit,
       isUnassigned,
+      visibility: asVisibility((cc as { visibility?: unknown }).visibility),
     };
   });
 
@@ -495,6 +500,155 @@ export async function removeCampaignCharacter(input: { campaignCharacterId: stri
   const { error } = await supabase.from('campaign_characters').delete().eq('id', input.campaignCharacterId);
   if (error) throw error;
   return { success: true };
+}
+
+const VISIBILITY_SETUP_HINT = 'Run supabase/campaign-visibility.sql in the Supabase SQL editor first.';
+
+/** Set how much of a campaign character the rest of the campaign can see (the GM, or the character's own player). */
+export async function setCampaignCharacterVisibility(input: { campaignCharacterId: string; visibility: CharacterVisibility }): Promise<{ success: boolean }> {
+  const { data, error } = await supabase.from('campaign_characters')
+    .update({ visibility: input.visibility })
+    .eq('id', input.campaignCharacterId)
+    .select('id');
+  if (error) {
+    if (/visibility/i.test(error.message)) throw new Error(VISIBILITY_SETUP_HINT);
+    throw error;
+  }
+  if (!data || data.length === 0) throw new Error('You cannot change who sees this character.');
+  return { success: true };
+}
+
+export interface VisibleCampaignCharacter {
+  id: string;
+  name: string;
+  playerId: string;
+  playerEmail: string;
+  visibility: CharacterVisibility;
+  /** The character JSON, redacted to what the visibility level allows. */
+  data: string;
+}
+
+/** Other people's campaign characters that have been made visible to you, redacted to their visibility level. */
+export async function getVisibleCampaignCharacters(input: { campaignId: string }): Promise<VisibleCampaignCharacter[]> {
+  const { data, error } = await supabase.rpc('get_visible_campaign_characters', { p_campaign: input.campaignId });
+  if (error) {
+    if (/get_visible_campaign_characters|schema cache|does not exist/i.test(error.message)) throw new Error(VISIBILITY_SETUP_HINT);
+    throw new Error(error.message);
+  }
+  const rows = (data ?? []) as { id: string; character_name: string; player: string | null; visibility: string; character_data: string }[];
+  const profiles = await fetchProfiles(rows.map(r => r.player ?? ''));
+  return rows.map(r => ({
+    id: r.id,
+    name: r.character_name ?? 'Unnamed',
+    playerId: r.player ?? '',
+    playerEmail: r.player ? profiles.get(r.player)?.email ?? '' : '',
+    visibility: asVisibility(r.visibility),
+    data: r.character_data ?? '{}',
+  }));
+}
+
+/** The JSON with its cloudId set to the row it is being stored in. */
+function withCloudId(data: string, cloudId: string): string {
+  try { return JSON.stringify({ ...JSON.parse(data), cloudId }); } catch { return data; }
+}
+
+/** The main character was saved: copy it onto every campaign copy of it, so the two stay the same. */
+export async function syncCharacterToCampaigns(input: { cloudId: string; name: string; data: string; /** Only these campaign copies (default: all of them). */ copyIds?: string[] }): Promise<{ updated: number }> {
+  const { data: all, error } = await supabase.from('campaign_characters').select('id').eq('original_character', input.cloudId);
+  const copies = (all ?? []).filter(cc => !input.copyIds || input.copyIds.includes(cc.id));
+  if (error || copies.length === 0) return { updated: 0 };
+  let updated = 0;
+  for (const cc of copies) {
+    const { error: e } = await supabase.from('campaign_characters')
+      .update({ character_name: input.name, character_data: withCloudId(input.data, cc.id), updated_at: new Date().toISOString() })
+      .eq('id', cc.id);
+    if (!e) updated++;
+  }
+  return { updated };
+}
+
+export interface SyncToOriginalResult {
+  /** The campaign copy has a main character it is linked to. */
+  linked: boolean;
+  originalId?: string;
+  /** The main character row was updated (false when the database blocked it, e.g. a GM editing a player's character without the sync policy). */
+  originalUpdated: boolean;
+  /** The main row's new updated_at. */
+  updatedAt?: string;
+  /** Other campaigns' copies of the same character that were updated too. */
+  otherCopiesUpdated: number;
+  /** The main character was deliberately left alone (it was not ticked). */
+  mainSkipped?: boolean;
+}
+
+/** A campaign copy was saved: copy it onto the main character and onto the character's other campaign copies. */
+export async function syncCampaignCharacterToOriginal(input: {
+  campaignCharacterId: string; name: string; characterType: string; level: number; data: string;
+  /** Update the main character (default yes). */
+  updateMain?: boolean;
+  /** Only these other campaign copies (default: all of them). */
+  copyIds?: string[];
+}): Promise<SyncToOriginalResult> {
+  const { data: cc } = await supabase.from('campaign_characters').select('original_character').eq('id', input.campaignCharacterId).maybeSingle();
+  const originalId = cc?.original_character ?? undefined;
+  if (!originalId) return { linked: false, originalUpdated: false, otherCopiesUpdated: 0 };
+
+  const updatedAt = new Date().toISOString();
+  const updateMain = input.updateMain !== false;
+  let originalUpdated = false;
+  if (updateMain) {
+    const { data: rows, error } = await supabase.from('characters')
+      .update({
+        character_name: input.name,
+        character_type: TYPE_TO_DB[input.characterType] ?? 'Normal',
+        level: input.level,
+        character_data: withCloudId(input.data, originalId),
+        updated_at: updatedAt,
+      })
+      .eq('id', originalId)
+      .select('id');
+    originalUpdated = !error && (rows?.length ?? 0) > 0;
+    if (!originalUpdated) return { linked: true, originalId, originalUpdated: false, otherCopiesUpdated: 0 };
+  }
+
+  let otherCopiesUpdated = 0;
+  const { data: others } = await supabase.from('campaign_characters').select('id').eq('original_character', originalId).neq('id', input.campaignCharacterId);
+  for (const o of (others ?? []).filter(x => !input.copyIds || input.copyIds.includes(x.id))) {
+    const { error: e } = await supabase.from('campaign_characters')
+      .update({ character_name: input.name, character_data: withCloudId(input.data, o.id), updated_at: updatedAt })
+      .eq('id', o.id);
+    if (!e) otherCopiesUpdated++;
+  }
+  return { linked: true, originalId, originalUpdated, updatedAt: originalUpdated ? updatedAt : undefined, otherCopiesUpdated, mainSkipped: !updateMain };
+}
+
+/** A campaign copy of a character, with the campaign it is in. */
+export interface LinkedCopy { id: string; campaignId: string; campaignName: string }
+
+async function campaignNames(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return out;
+  const { data } = await supabase.from('campaigns').select('*').in('id', unique);
+  (data ?? []).forEach(c => out.set(c.id, c.campaign_name ?? 'Campaign'));
+  return out;
+}
+
+/** The campaign copies of a main character that you can see (so a save can offer to update them). */
+export async function getLinkedCampaignCopies(input: { originalId: string }): Promise<LinkedCopy[]> {
+  const { data } = await supabase.from('campaign_characters').select('id, campaign').eq('original_character', input.originalId);
+  const rows = data ?? [];
+  const names = await campaignNames(rows.map(r => r.campaign));
+  return rows.map(r => ({ id: r.id, campaignId: r.campaign, campaignName: names.get(r.campaign) ?? 'Campaign' }));
+}
+
+/** For a campaign copy: the main character it comes from (if any) and the character's other campaign copies. */
+export async function getLinkedSheetsForCopy(input: { campaignCharacterId: string }): Promise<{ originalId?: string; others: LinkedCopy[] }> {
+  const { data: cc } = await supabase.from('campaign_characters').select('original_character').eq('id', input.campaignCharacterId).maybeSingle();
+  const originalId = cc?.original_character ?? undefined;
+  if (!originalId) return { others: [] };
+  const copies = await getLinkedCampaignCopies({ originalId });
+  return { originalId, others: copies.filter(c => c.id !== input.campaignCharacterId) };
 }
 
 export async function saveCampaignCharacter(input: {

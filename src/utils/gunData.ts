@@ -94,6 +94,18 @@ export function getLoadOptions(chamberedId: string | undefined): LoadOption[] {
   return out;
 }
 
+/** Key of one cartridge + round type in Character.ammoStock. */
+export const ammoKey = (ammoId: string, roundId: string) => `${ammoId}:${roundId}`;
+/** Rounds of one cartridge + round type in the inventory. */
+export function getAmmoCount(c: Pick<Character, 'ammoStock'>, ammoId: string, roundId: string): number {
+  return Math.max(0, Math.floor(c.ammoStock?.[ammoKey(ammoId, roundId)] ?? 0));
+}
+/** Cartridges a gun can load: the chambered one and any compatible ones. */
+export function getGunCartridges(g: Pick<Firearm, 'ammoId'>): string[] {
+  const chambered = getAmmo(g.ammoId);
+  return chambered ? [chambered.id, ...(chambered.compatible ?? [])] : [];
+}
+
 type LoadFields = Pick<Firearm, 'ammoId' | 'loadedAmmoId' | 'roundId'>;
 /** The cartridge actually loaded (the chambered one unless a compatible one was picked). */
 export function getLoadedAmmo(g: LoadFields): Ammo | undefined { return getAmmo(g.loadedAmmoId ?? g.ammoId); }
@@ -241,6 +253,31 @@ export function describeGun(g: Firearm): string {
     if (opt) parts.push(opt.label);
   }
   return parts.filter(Boolean).join(' · ');
+}
+
+// ── Magazine ─────────────────────────────────────────────────────────────────
+// How many rounds a gun holds. These defaults by reload method are placeholders until the real magazine
+// rules are set; every gun can override its own size in the builder.
+export function defaultMagazineSize(storage: string, cycling: string): number {
+  if (storage === 'integrated') {
+    if (cycling === 'single' || cycling === 'muzzle') return 1;
+    if (cycling === 'break') return 2;
+    return 6; // cylinder
+  }
+  if (storage === 'attached') return 5;
+  if (storage === 'detachable-internal') return 10;
+  return 20; // detachable-external
+}
+
+/** The gun's magazine size: its own override, otherwise the default for its reload method. */
+export function getMagazineSize(g: Pick<Firearm, 'storage' | 'cycling' | 'magazineSize'>): number {
+  return g.magazineSize && g.magazineSize > 0 ? Math.floor(g.magazineSize) : defaultMagazineSize(g.storage, g.cycling);
+}
+
+/** Rounds loaded right now (a gun that has never fired is full), never more than the magazine holds. */
+export function getRoundsLeft(g: Pick<Firearm, 'storage' | 'cycling' | 'magazineSize' | 'rounds'>): number {
+  const size = getMagazineSize(g);
+  return g.rounds === undefined ? size : Math.max(0, Math.min(size, Math.floor(g.rounds)));
 }
 
 // ── Which proficiency a build uses ───────────────────────────────────────────

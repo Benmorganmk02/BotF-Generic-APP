@@ -58,6 +58,8 @@ export type Database = {
           original_character: string | null;
           player: string;
           character_data: string;
+          /** How much of the character other people in the campaign can see (see utils/visibility.ts). */
+          visibility: 'hidden' | 'basic' | 'stats' | 'full';
           created_at: string;
           updated_at: string;
         };

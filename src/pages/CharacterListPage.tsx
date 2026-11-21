@@ -36,7 +36,7 @@ export default function CharacterListPage() {
       try {
         const result = await getCharacters();
         const chars = result.characters.map(r => {
-          try { const c = JSON.parse(r.data) as Character; return { ...c, cloudId: r.cloudId }; }
+          try { const c = JSON.parse(r.data) as Character; return { ...c, cloudId: r.cloudId, cloudSyncedAt: r.updatedAt }; }
           catch { return null; }
         }).filter(Boolean) as Character[];
         chars.forEach(saveLocalCharacter);
@@ -58,7 +58,7 @@ export default function CharacterListPage() {
     if (user && !isGuestMode()) {
       try {
         const result = await saveCharacter({ name: char.name, characterType: char.characterType, level: char.level, data: JSON.stringify(char) });
-        saveLocalCharacter({ ...char, cloudId: result.cloudId });
+        saveLocalCharacter({ ...char, cloudId: result.cloudId, cloudSyncedAt: result.updatedAt });
       } catch { toast.error('Failed to sync to cloud. Saved locally.'); }
     }
     await loadCharacters();

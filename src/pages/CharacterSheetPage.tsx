@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getLocalCharacter, isGuestMode, saveLocalCharacter } from '../utils/storage';
 import { Character } from '../types/character';
-import { saveCharacter, getCharacters } from '../lib/api/characters';
+import { saveCharacter, getCharacters, getCharacterRow } from '../lib/api/characters';
+import { syncCharacterToCampaigns, getLinkedCampaignCopies } from '../lib/api/social';
+import type { SyncTarget } from '../components/sheet/SaveTargetsMenu';
 import CharacterSheet from '../components/CharacterSheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,19 @@ export default function CharacterSheetPage() {
   const [character, setCharacter] = useState<Character | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Bumped when newer data is pulled from the cloud, so the sheet remounts with it
+  const [refreshKey, setRefreshKey] = useState(0);
+  // The campaign copies a save can also update
+  const [targets, setTargets] = useState<SyncTarget[]>([]);
+  const cloudId = character?.cloudId;
+  useEffect(() => {
+    if (!cloudId || !user || isGuestMode()) { setTargets([]); return; }
+    let cancelled = false;
+    getLinkedCampaignCopies({ originalId: cloudId })
+      .then(copies => { if (!cancelled) setTargets(copies.map(c => ({ id: c.id, kind: 'campaign' as const, label: `Campaign: ${c.campaignName}` }))); })
+      .catch(() => { if (!cancelled) setTargets([]); });
+    return () => { cancelled = true; };
+  }, [cloudId, user]);
 
   useEffect(() => {
     if (!id) { setNotFound(true); setLoading(false); return; }
@@ -36,6 +51,30 @@ export default function CharacterSheetPage() {
     // Try local first
     const local = getLocalCharacter(id);
     if (local) {
+      // Signed in with a cloud copy: if the cloud row changed after we last synced (for example it was edited
+      // through a campaign copy), pull that in so this sheet and the campaign copy stay the same.
+      if (user && !isGuestMode() && local.cloudId) {
+        let cancelled = false;
+        getCharacterRow(local.cloudId).then(row => {
+          if (cancelled) return;
+          if (row && local.cloudSyncedAt && row.updatedAt > local.cloudSyncedAt) {
+            try {
+              const fresh = { ...JSON.parse(row.data) as Character, cloudId: row.cloudId, cloudSyncedAt: row.updatedAt };
+              saveLocalCharacter(fresh);
+              setCharacter(normalizeChar(fresh));
+              setRefreshKey(k => k + 1);
+              toast.info('Updated with the latest from your campaign copy.');
+              return;
+            } catch { /* fall through to the local copy */ }
+          }
+          // First time we see this copy: remember the cloud version it matches
+          const known = row && !local.cloudSyncedAt ? { ...local, cloudSyncedAt: row.updatedAt } : local;
+          if (known !== local) saveLocalCharacter(known);
+          setCharacter(normalizeChar(known));
+        }).catch(() => { if (!cancelled) setCharacter(normalizeChar(local)); })
+          .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+      }
       setCharacter(normalizeChar(local));
       setLoading(false);
       return;
@@ -72,9 +111,9 @@ export default function CharacterSheetPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, user?.id]);
 
-  const handleSave = async (char: Character): Promise<{ cloudId?: string } | void> => {
+  const handleSave = async (char: Character, selectedTargetIds?: string[], opts?: { silent?: boolean }): Promise<{ cloudId?: string; syncedAt?: string } | void> => {
     saveLocalCharacter(char);
     const guest = isGuestMode();
     if (user && !guest) {
@@ -85,11 +124,21 @@ export default function CharacterSheetPage() {
         level: char.level,
         data: JSON.stringify(char),
       });
-      saveLocalCharacter({ ...char, cloudId: result.cloudId });
-      toast.success('Character saved to cloud!');
-      return { cloudId: result.cloudId };
+      const saved: Character = { ...char, cloudId: result.cloudId, cloudSyncedAt: result.updatedAt };
+      saveLocalCharacter(saved);
+      // Keep every campaign copy of this character the same
+      let note = '';
+      try {
+        // The ticked campaign copies (all of them when the sheet has no picker)
+        const sync = selectedTargetIds && selectedTargetIds.length === 0
+          ? { updated: 0 }
+          : await syncCharacterToCampaigns({ cloudId: result.cloudId, name: char.name, data: JSON.stringify(saved), copyIds: selectedTargetIds });
+        if (sync.updated > 0) note = ` Updated ${sync.updated} campaign cop${sync.updated === 1 ? 'y' : 'ies'} too.`;
+      } catch { /* the character itself saved; the campaign copies sync on the next save */ }
+      if (!opts?.silent) toast.success(`Character saved to cloud!${note}`);
+      return { cloudId: result.cloudId, syncedAt: result.updatedAt };
     }
-    toast.success('Character saved locally!');
+    if (!opts?.silent) toast.success('Character saved locally!');
   };
 
   if (loading) {
@@ -114,5 +163,5 @@ export default function CharacterSheetPage() {
     );
   }
 
-  return <CharacterSheet initialCharacter={character} onSave={handleSave} onHome={() => navigate('/')} />;
+  return <CharacterSheet key={refreshKey} initialCharacter={character} onSave={handleSave} onHome={() => navigate('/')} syncTargets={targets} syncKey={`main:${character.id}`} />;
 }

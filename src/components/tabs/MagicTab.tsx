@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { usePersistedState } from '../../utils/usePersistedState';
 import { chainTargetCount, clamp, blastRadiusFor, MAX_FOLLOW_SIZE, followBlastRadius, followConePool } from '../../utils/spellGeometry';
 import { useChar } from '../../context/CharacterContext';
 import { AbilityEntry, MagicSource } from '../../types/character';
@@ -642,10 +643,11 @@ export default function MagicTab() {
   // A spell uses them first and the rest comes out of the mana pool; unused roll mana is lost on cast.
   const magicDice = getMagicRollDice(c);
   const { currentRoll } = useDiceRoll();
-  const [riverMana, setRiverMana] = useState(0);
+  const [riverMana, setRiverMana] = usePersistedState(`botv_river:${c.cloudId ?? c.id}`, 0);
   // A new turn (or combat starting or ending) clears the roll's unused mana
   const { turnKey } = useCombat();
-  useEffect(() => { setRiverMana(0); }, [turnKey]);
+  const firstTurnKey = useRef(turnKey);
+  useEffect(() => { if (turnKey !== firstTurnKey.current) setRiverMana(0); }, [turnKey, setRiverMana]);
   useEffect(() => {
     if (currentRoll && currentRoll.label === MAGIC_ROLL_LABEL) setRiverMana(currentRoll.successes);
   }, [currentRoll]);

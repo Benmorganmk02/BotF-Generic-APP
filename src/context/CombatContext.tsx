@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import { usePersistedState } from '../utils/usePersistedState';
 import { toast } from 'sonner';
 import { useChar } from './CharacterContext';
 import type { Character } from '../types/character';
@@ -43,14 +44,17 @@ function bumpTurnStats(p: Character): Character {
 
 export function CombatProvider({ children }: { children: ReactNode }) {
   const { character, setCharacter } = useChar();
-  const [opponents, setOpponentsRaw] = useState(1);
+  // The combat state is kept across reloads (and app updates), per sheet; End Combat clears it
+  const base = character.cloudId ?? character.id;
+  const key = (name: string) => `botv_combat:${base}:${name}`;
+  const [opponents, setOpponentsRaw] = usePersistedState(key('opponents'), 1);
   const setOpponents = (n: number) => setOpponentsRaw(Math.max(1, Math.floor(n) || 1));
 
-  const [inCombat, setInCombat] = useState(false);
-  const [turn, setTurn] = useState(1);
+  const [inCombat, setInCombat] = usePersistedState(key('inCombat'), false);
+  const [turn, setTurn] = usePersistedState(key('turn'), 1);
   const [turnKey, setTurnKey] = useState(0);
-  const [actionsSpent, setActionsSpent] = useState(0);
-  const [reactionsSpent, setReactionsSpent] = useState(0);
+  const [actionsSpent, setActionsSpent] = usePersistedState(key('actionsSpent'), 0);
+  const [reactionsSpent, setReactionsSpent] = usePersistedState(key('reactionsSpent'), 0);
 
   const actionsMax = ACTIONS_PER_TURN;
   const reactionsMax = getReactionCount(character);

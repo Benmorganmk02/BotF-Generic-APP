@@ -301,7 +301,7 @@ export default function ProficiencyCard({ prof, index, onMoveUp, onMoveDown }: P
   const dice = profDice;
   const incCost = getStatChangeCost(prof.level, 1, prof.startingPrime);
   const swordDef = getSwordProfDef(prof.swordKey);
-  const atLevelCap = !!swordDef && prof.level >= MAX_SWORD_PROF_LEVEL;
+  const atLevelCap = (!!swordDef || !!prof.basicMelee) && prof.level >= MAX_SWORD_PROF_LEVEL;
   const canInc = (isGM || avail >= incCost) && !atLevelCap;
   const canDec = prof.level > 0;
   const calcStr = buildCalcStr(prof, profDice, c);

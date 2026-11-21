@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { Character } from '../types/character';
 import { CharacterProvider } from '../context/CharacterContext';
 import { DiceRollProvider } from '../context/DiceRollContext';
@@ -17,14 +18,24 @@ import ProficienciesTab from './tabs/ProficienciesTab';
 import ArmorEquipmentTab from './tabs/ArmorEquipmentTab';
 import MagicTab from './tabs/MagicTab';
 import TurnTracker from './sheet/TurnTracker';
+import SaveTargetsMenu from './sheet/SaveTargetsMenu';
+import type { SyncTarget } from './sheet/SaveTargetsMenu';
 import DiceRollPanel from './dice/DiceRollPanel';
 import DiceResultModal from './dice/DiceResultModal';
 
 interface Props {
   initialCharacter: Character;
-  onSave: (char: Character) => Promise<{ cloudId?: string } | void>;
+  /** `selectedTargetIds` is which of `syncTargets` were ticked (undefined when the sheet has none). */
+  /** `opts.silent` is an auto-save: no success messages. */
+  onSave: (char: Character, selectedTargetIds?: string[], opts?: { silent?: boolean }) => Promise<{ cloudId?: string; syncedAt?: string } | void>;
+  /** Other sheets of this character a save can also update (the main character, or its campaign copies). */
+  syncTargets?: SyncTarget[];
+  /** Where the ticked/unticked choice is remembered on this device. */
+  syncKey?: string;
   onHome: () => void;
   campaignMode?: boolean;
+  /** Someone else's character shown to you: nothing on the sheet changes and there is no Save. */
+  readOnly?: boolean;
 }
 
 const TYPE_LABELS: Record<string, string> = { normal: 'Normal', gm: 'GM/NPC' };
@@ -40,31 +51,128 @@ function CompactPool({ label, value, isGM }: { label: string; value: number; isG
   );
 }
 
-export default function CharacterSheet({ initialCharacter, onSave, onHome, campaignMode }: Props) {
+const AUTOSAVE_DELAY_MS = 2500;
+const AUTOSAVE_RETRY_MS = 20000;
+type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error';
+/** What counts as a change worth saving: the character without its cloud bookkeeping. */
+const changeSig = (c: Character) => JSON.stringify({ ...c, cloudId: undefined, cloudSyncedAt: undefined });
+
+export default function CharacterSheet({ initialCharacter, onSave, onHome, campaignMode, readOnly, syncTargets, syncKey }: Props) {
   const [character, setCharacterState] = useState<Character>(initialCharacter);
   const [saving, setSaving] = useState(false);
+  // Unticked sheets are remembered, so new sheets start ticked
+  const storeKey = syncKey ? `botv_sync_off_${syncKey}` : '';
+  const [unchecked, setUncheckedState] = useState<string[]>(() => {
+    try { return storeKey ? JSON.parse(localStorage.getItem(storeKey) ?? '[]') : []; } catch { return []; }
+  });
+  const setUnchecked = (v: string[]) => {
+    setUncheckedState(v);
+    try { if (storeKey) localStorage.setItem(storeKey, JSON.stringify(v)); } catch { /* the choice just is not remembered */ }
+  };
 
   const setCharacter = (updater: Character | ((prev: Character) => Character)) => {
+    if (readOnly) return;
     setCharacterState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveLocalCharacter(next);
+      // A campaign copy is saved to its campaign row, never over the local main character
+      if (!campaignMode) saveLocalCharacter(next);
       return next;
     });
   };
 
-  const handleSave = async () => {
+  // ── Auto-save ──
+  // Changes are saved a moment after you stop editing, when the tab is hidden, and when you leave the sheet, so
+  // forgetting to press Save does not lose anything. Save still works as before.
+  const latest = useRef(character);
+  latest.current = character;
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const targetsRef = useRef({ syncTargets, unchecked });
+  targetsRef.current = { syncTargets, unchecked };
+  const savedSig = useRef(changeSig(initialCharacter));
+  const inFlight = useRef(false);
+  const queued = useRef(false);
+  const errorShown = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+
+  const runSave = async (silent: boolean) => {
+    if (readOnly) return;
+    if (inFlight.current) { queued.current = true; return; }
+    const snapshot = latest.current;
+    const sig = changeSig(snapshot);
+    if (silent && sig === savedSig.current) return;
+    inFlight.current = true;
     setSaving(true);
+    setSaveStatus('saving');
     try {
-      const result = await onSave(character);
-      if (result?.cloudId && !character.cloudId) {
+      const { syncTargets: targets, unchecked: off } = targetsRef.current;
+      const selectedIds = targets && targets.length > 0 ? targets.filter(t => !off.includes(t.id)).map(t => t.id) : undefined;
+      const result = await onSaveRef.current(snapshot, selectedIds, { silent });
+      savedSig.current = sig;
+      errorShown.current = false;
+      if (result && !campaignMode && (result.cloudId || result.syncedAt)) {
         setCharacterState(prev => {
-          const updated = { ...prev, cloudId: result.cloudId };
+          const updated = { ...prev, cloudId: result.cloudId ?? prev.cloudId, cloudSyncedAt: result.syncedAt ?? prev.cloudSyncedAt };
           saveLocalCharacter(updated);
           return updated;
         });
       }
-    } finally { setSaving(false); }
+      setSaveStatus(changeSig(latest.current) === sig ? 'saved' : 'dirty');
+    } catch {
+      setSaveStatus('error');
+      if (!silent || !errorShown.current) {
+        errorShown.current = true;
+        toast.error(silent
+          ? (campaignMode ? 'Auto-save failed. Keep this page open: it will keep retrying.' : 'Auto-save failed. Your changes are kept on this device and will save when it works again.')
+          : 'Save failed.');
+      }
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+      if (queued.current) { queued.current = false; void runSaveRef.current(true); }
+    }
   };
+  const runSaveRef = useRef(runSave);
+  runSaveRef.current = runSave;
+  const handleSave = () => runSave(false);
+
+  // Save shortly after the last change
+  useEffect(() => {
+    if (readOnly) return;
+    if (changeSig(character) === savedSig.current) return;
+    setSaveStatus(s => (s === 'saving' ? s : 'dirty'));
+    const t = window.setTimeout(() => { void runSaveRef.current(true); }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [character, readOnly]);
+
+  // After a failed save, keep trying
+  useEffect(() => {
+    if (saveStatus !== 'error') return;
+    const t = window.setTimeout(() => { void runSaveRef.current(true); }, AUTOSAVE_RETRY_MS);
+    return () => window.clearTimeout(t);
+  }, [saveStatus]);
+
+  // Save when the tab is hidden, the page closes, or you leave the sheet; warn if something is still unsaved
+  useEffect(() => {
+    if (readOnly) return;
+    const flush = () => { if (changeSig(latest.current) !== savedSig.current) void runSaveRef.current(true); };
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (changeSig(latest.current) !== savedSig.current || inFlight.current) { flush(); e.preventDefault(); e.returnValue = ''; }
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      flush();
+    };
+  }, [readOnly]);
+
+  const statusLabel = saveStatus === 'saving' ? 'Saving...' : saveStatus === 'dirty' ? 'Unsaved changes'
+    : saveStatus === 'error' ? 'Auto-save failed, retrying' : 'All changes saved';
 
   return (
     <CharacterProvider character={character} setCharacter={setCharacter}>
@@ -79,16 +187,27 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-base font-bold text-foreground truncate">{character.name || 'Unnamed Character'}</h1>
                   <Badge variant="secondary" className="text-xs">{TYPE_LABELS[character.characterType]}</Badge>
+                  {readOnly && <Badge className="text-xs bg-sky-500/20 text-sky-400 border border-sky-500/40">View only</Badge>}
                   {campaignMode && <Badge className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40">Campaign Copy</Badge>}
                   <span className="text-xs text-muted-foreground">Lvl {character.level}</span>
                   {character.player && <span className="text-xs text-muted-foreground hidden sm:inline">· {character.player}</span>}
                   {character.race && <span className="text-xs text-muted-foreground hidden md:inline">· {character.race}</span>}
                 </div>
               </div>
-              <Button size="sm" onClick={handleSave} disabled={saving} className="shrink-0">
-                {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                Save
-              </Button>
+              {!readOnly && (
+                <span className={`text-[11px] shrink-0 ${saveStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'} ${saveStatus === 'saved' ? 'hidden sm:inline' : ''}`} aria-live="polite">
+                  {statusLabel}
+                </span>
+              )}
+              {!readOnly && syncTargets && syncTargets.length > 0 && (
+                <SaveTargetsMenu targets={syncTargets} unchecked={unchecked} onChange={setUnchecked} />
+              )}
+              {!readOnly && (
+                <Button size="sm" onClick={handleSave} disabled={saving} className="shrink-0">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+                  Save
+                </Button>
+              )}
             </div>
             {/* Row 2: compact point pools + action economy */}
             {character.characterType !== 'gm' && (

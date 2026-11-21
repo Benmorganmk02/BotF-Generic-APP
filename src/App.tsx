@@ -6,7 +6,9 @@ import CharacterListPage from './pages/CharacterListPage';
 import CharacterSheetPage from './pages/CharacterSheetPage';
 import CampaignPage from './pages/CampaignPage';
 import CampaignCharacterPage from './pages/CampaignCharacterPage';
+import CampaignViewPage from './pages/CampaignViewPage';
 import { Toaster } from '@/components/ui/sonner';
+import UpdatePrompt from './components/UpdatePrompt';
 import { useEffect } from 'react';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -37,12 +39,14 @@ export default function App() {
     <AuthProvider>
     <BrowserRouter>
       <Toaster position="top-right" />
+      <UpdatePrompt />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<AuthGuard><CharacterListPage /></AuthGuard>} />
         <Route path="/sheet/:id" element={<AuthGuard><CharacterSheetPage /></AuthGuard>} />
         <Route path="/campaign/:campaignId" element={<AuthGuard><CampaignPage /></AuthGuard>} />
         <Route path="/campaign/:campaignId/character/:characterId" element={<AuthGuard><CampaignCharacterPage /></AuthGuard>} />
+        <Route path="/campaign/:campaignId/view/:characterId" element={<AuthGuard><CampaignViewPage /></AuthGuard>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

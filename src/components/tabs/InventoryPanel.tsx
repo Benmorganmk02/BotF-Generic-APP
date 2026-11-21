@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useChar } from '../../context/CharacterContext';
 import { InventoryItem } from '../../types/character';
 import { genId } from '../../utils/defaults';
+import AmmoSection from '../sheet/AmmoSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Trash2, Plus, ArrowUp, ArrowDown } from 'lucide-react';
@@ -35,6 +36,8 @@ export default function InventoryPanel() {
 
   return (
     <div className="p-4 space-y-4">
+      <AmmoSection />
+
       <div className="flex gap-2 flex-wrap">
         <Input value={name} onChange={e => setName(e.target.value)} placeholder="Item name..." className="flex-1 min-w-[140px]" />
         <Input type="number" value={qty} onChange={e => setQty(+e.target.value)} min={1} className="w-16 text-center" />

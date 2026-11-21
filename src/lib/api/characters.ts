@@ -15,6 +15,8 @@ export interface CloudCharacter {
   characterType: string;
   level: number;
   data: string;
+  /** The row's updated_at (ISO time). */
+  updatedAt: string;
 }
 
 export interface GetCharactersOutputType {
@@ -39,7 +41,22 @@ export async function getCharacters(): Promise<{ characters: CloudCharacter[] }>
       characterType: TYPE_FROM_DB[r.character_type] ?? 'normal',
       level: r.level ?? 0,
       data: r.character_data ?? '{}',
+      updatedAt: r.updated_at ?? '',
     })),
+  };
+}
+
+/** One character row by its cloud id (null if it is gone or not readable). */
+export async function getCharacterRow(cloudId: string): Promise<CloudCharacter | null> {
+  const { data, error } = await supabase.from('characters').select('*').eq('id', cloudId).maybeSingle();
+  if (error || !data) return null;
+  return {
+    cloudId: data.id,
+    name: data.character_name ?? 'Unnamed',
+    characterType: TYPE_FROM_DB[data.character_type] ?? 'normal',
+    level: data.level ?? 0,
+    data: data.character_data ?? '{}',
+    updatedAt: data.updated_at ?? '',
   };
 }
 
@@ -49,7 +66,7 @@ export async function saveCharacter(input: {
   characterType: string;
   level: number;
   data: string;
-}): Promise<{ cloudId: string }> {
+}): Promise<{ cloudId: string; updatedAt: string }> {
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) throw new Error('Not authenticated');
 
@@ -64,7 +81,7 @@ export async function saveCharacter(input: {
   if (input.cloudId) {
     const { error } = await supabase.from('characters').update(fields).eq('id', input.cloudId);
     if (error) throw error;
-    return { cloudId: input.cloudId };
+    return { cloudId: input.cloudId, updatedAt: fields.updated_at };
   } else {
     const { data, error } = await supabase
       .from('characters')
@@ -72,7 +89,7 @@ export async function saveCharacter(input: {
       .select('id')
       .single();
     if (error) throw error;
-    return { cloudId: data.id };
+    return { cloudId: data.id, updatedAt: fields.updated_at };
   }
 }
 

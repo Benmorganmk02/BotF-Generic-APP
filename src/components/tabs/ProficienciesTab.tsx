@@ -13,6 +13,9 @@ import { Plus } from 'lucide-react';
 
 type ProfType = 'weapon' | 'vocation' | 'bow' | 'crossbow' | 'firearms';
 
+/** Value of the placeholder basic Melee entry in the melee list (the rest are sword proficiency keys). */
+const BASIC_MELEE = '__basic_melee__';
+
 const PROF_TYPE_DEFAULTS: Record<ProfType, Partial<Proficiency>> = {
   weapon:   { physicalStat: 'str', mentalStat: 'wis' },
   bow:      { physicalStat: 'str', mentalStat: 'dex' },
@@ -48,22 +51,24 @@ export default function ProficienciesTab() {
   const isMelee = profType === 'weapon';
   const ownedSwordKeys = c.proficiencies.map(p => p.swordKey).filter(Boolean) as string[];
   const swordDef = getSwordProfDef(swordKey);
+  const isBasicMelee = isMelee && swordKey === BASIC_MELEE;
+  const hasBasicMelee = c.proficiencies.some(p => p.basicMelee);
   const isGun = profType === 'firearms';
   const ownedGunKeys = c.proficiencies.map(p => p.gunKey).filter(Boolean) as string[];
   const gunDef = getGunProfDef(gunKey);
-  const canAdd = isMelee ? !!swordDef : isGun ? !!gunDef : !!name.trim();
+  const canAdd = isMelee ? (!!swordDef || (isBasicMelee && !hasBasicMelee)) : isGun ? !!gunDef : !!name.trim();
 
   const addProf = () => {
     if (!canAdd) return;
     const defaults = PROF_TYPE_DEFAULTS[profType];
     const newProf: Proficiency = {
-      id: genId(), name: isMelee ? swordDef!.name : isGun ? gunDef!.name : name.trim(), level: 0,
+      id: genId(), name: isBasicMelee ? 'Melee' : isMelee ? swordDef!.name : isGun ? gunDef!.name : name.trim(), level: 0,
       attributes: [], skills: [],
-      startingPrime: isMelee ? SWORD_STARTING_PRIME : sp === '1' ? 1 : 0,
+      startingPrime: isBasicMelee ? 0 : isMelee ? SWORD_STARTING_PRIME : sp === '1' ? 1 : 0,
       itemBonus: 0, modifier: 0,
       profType,
       ...defaults,
-      ...(isMelee ? { swordKey: swordDef!.key, physicalStat: swordDef!.lockedPhysicalStat ?? 'str' } : {}),
+      ...(isBasicMelee ? { basicMelee: true } : isMelee ? { swordKey: swordDef!.key, physicalStat: swordDef!.lockedPhysicalStat ?? 'str' } : {}),
       ...(isGun ? { gunKey: gunDef!.key } : {}),
     };
     setCharacter(p => ({ ...p, proficiencies: [...p.proficiencies, newProf] }));
@@ -85,8 +90,11 @@ export default function ProficienciesTab() {
       <div className="flex gap-2 flex-wrap">
         {isMelee ? (
           <Select value={swordKey} onValueChange={setSwordKey}>
-            <SelectTrigger className="flex-1 min-w-[140px] h-9"><SelectValue placeholder="Pick a sword proficiency..." /></SelectTrigger>
+            <SelectTrigger className="flex-1 min-w-[140px] h-9"><SelectValue placeholder="Pick a melee proficiency..." /></SelectTrigger>
             <SelectContent>
+              <SelectItem value={BASIC_MELEE} disabled={hasBasicMelee}>
+                Melee (basic){hasBasicMelee ? ' (taken)' : ''}
+              </SelectItem>
               {SWORD_PROFICIENCIES.map(d => (
                 <SelectItem key={d.key} value={d.key} disabled={ownedSwordKeys.includes(d.key)}>
                   {d.name}{ownedSwordKeys.includes(d.key) ? ' (taken)' : ''}
@@ -121,7 +129,7 @@ export default function ProficienciesTab() {
         </Select>
         {isMelee ? (
           <div className="h-9 px-3 flex items-center rounded-md border border-border bg-muted/40 text-xs text-muted-foreground whitespace-nowrap">
-            Complex (starts at 2 pts)
+            {isBasicMelee ? 'Basic (starts at 1 pt)' : 'Complex (starts at 2 pts)'}
           </div>
         ) : (
           <Select value={sp} onValueChange={v => setSp(v as '0' | '1')}>
@@ -138,7 +146,9 @@ export default function ProficienciesTab() {
       </div>
       {isMelee && (
         <p className="text-xs text-muted-foreground -mt-3">
-          {swordDef ? swordDef.baseFeature : 'Melee proficiencies are picked from a fixed list. Swords are first; other weapon families are coming.'}
+          {isBasicMelee
+            ? 'A basic proficiency for any weapon that is not a sword: link those weapons to it on the Weapons tab. Capped at level 5. A placeholder until the other weapon families are built.'
+            : swordDef ? swordDef.baseFeature : 'Melee proficiencies are picked from a fixed list: a basic Melee one for non-sword weapons, then the swords. Other weapon families are coming.'}
         </p>
       )}
 

@@ -9,12 +9,16 @@ import { Character, MagicSource } from '../types/character';
 import { MAGIC_SOURCES, MAGIC_SOURCE_INFO, FABRICATED_NAMES } from '../utils/magic';
 import { WORLDS, getWorld, raceAllowed, backgroundAllowed } from '../data/worlds';
 
-interface Props { open: boolean; onClose: () => void; onCreate: (char: Character) => void; }
+interface Props {
+  open: boolean; onClose: () => void; onCreate: (char: Character) => void;
+  /** False hides the GM/NPC type, for players creating a character in a campaign. */
+  allowGM?: boolean;
+}
 
 type Mode = 'archetype' | 'custom';
 const DEFAULT_WORLD = WORLDS[0].id;
 
-export default function CreateCharacterDialog({ open, onClose, onCreate }: Props) {
+export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM = true }: Props) {
   const [name, setName] = useState('');
   const [player, setPlayer] = useState('');
   const [type, setType] = useState<'normal' | 'gm'>('normal');
@@ -83,16 +87,18 @@ export default function CreateCharacterDialog({ open, onClose, onCreate }: Props
             <Label>Player Name</Label>
             <Input value={player} onChange={e => setPlayer(e.target.value)} placeholder="Your name..." />
           </div>
-          <div className="space-y-1">
-            <Label>Character Type</Label>
-            <Select value={type} onValueChange={v => setType(v as typeof type)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="normal">Normal — Standard point-buy</SelectItem>
-                <SelectItem value="gm">GM/NPC — Infinite points, no restrictions</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {allowGM && (
+            <div className="space-y-1">
+              <Label>Character Type</Label>
+              <Select value={type} onValueChange={v => setType(v as typeof type)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal — Standard point-buy</SelectItem>
+                  <SelectItem value="gm">GM/NPC — Infinite points, no restrictions</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-1">
             <Label>World</Label>

@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Minus, Plus } from 'lucide-react';
 import type { Firearm } from '../../types/character';
 import {
-  GUN_RECEIVERS, ATTACHMENT_SLOTS, RIFLING_OPTIONS, STOCK_OPTIONS, STORAGE_OPTIONS, CYCLING_OPTIONS, AUTO_CYCLING, AUTO_MODES, barrelLabel, MAX_BARREL_LEVEL,
+  GUN_RECEIVERS, ATTACHMENT_SLOTS, RIFLING_OPTIONS, STOCK_OPTIONS, STORAGE_OPTIONS, CYCLING_OPTIONS, AUTO_CYCLING, AUTO_MODES, defaultMagazineSize, barrelLabel, MAX_BARREL_LEVEL,
   GUN_PROFICIENCIES, getGunReceiver, getAmmo, ammoDice, getLoadOptions, getLoadedAmmo, getLoadedRound, fmtMult, fmtAp, getGunProfDef, resolveGunProf, getGunWeaponBonus, getGunBonusParts,
 } from '../../utils/gunData';
 import { genId } from '../../utils/defaults';
@@ -49,6 +50,8 @@ export default function GunBuilder({ onSave, onCancel, initialGun }: Props) {
   const toggleAutomatic = (on: boolean) => { if (on) { setManualCycling(cycling); setCycling(AUTO_CYCLING); } else setCycling(manualCycling); };
   const toggleMode = (id: string) => setAutoModes(m => m.includes(id) ? (m.length > 1 ? m.filter(x => x !== id) : m) : [...m, id]);
   const [attachments, setAttachments] = useState<Record<string, string>>(initialGun?.attachments ?? {});
+  // Magazine size: blank uses the default for the reload method
+  const [magSize, setMagSize] = useState(initialGun?.magazineSize ? String(initialGun.magazineSize) : '');
 
   const receiver = getGunReceiver(receiverId);
   const ammo = getAmmo(ammoId);
@@ -67,11 +70,13 @@ export default function GunBuilder({ onSave, onCancel, initialGun }: Props) {
   const draft: Firearm = {
     id: initialGun?.id ?? genId(), name: name.trim(), receiver: receiverId, ammoId, roundId, loadedAmmoId, profOverride,
     rifling, stock, barrelLevel, storage, cycling, autoModes: cycling === AUTO_CYCLING ? AUTO_MODES.filter(m => autoModes.includes(m.id)).map(m => m.id) : undefined, attachments, mentalStat: initialGun?.mentalStat,
+    magazineSize: Number.parseInt(magSize, 10) > 0 ? Number.parseInt(magSize, 10) : undefined, rounds: initialGun?.rounds,
   };
   const fit = resolveGunProf(c, draft);
   const profDef = getGunProfDef(fit.key ?? fit.fits[0]?.key);
   const ownsProf = !!fit.prof;
   const others = fit.fits.filter(f => f.key !== fit.key);
+  const sizeNow = Number.parseInt(magSize, 10) > 0 ? Number.parseInt(magSize, 10) : defaultMagazineSize(storage, cycling);
   const bonus = getGunWeaponBonus(draft);
   const parts = getGunBonusParts(draft).filter(p => p.value !== 0);
 
@@ -200,6 +205,19 @@ export default function GunBuilder({ onSave, onCancel, initialGun }: Props) {
             <p className="text-[11px] text-muted-foreground">
               {[STORAGE_OPTIONS.find(o => o.id === storage)?.note, CYCLING_OPTIONS.find(o => o.id === cycling)?.note].filter(Boolean).join(' ')}
             </p>
+          </div>
+
+          {/* Magazine */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-foreground">Magazine</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setMagSize(String(Math.max(1, sizeNow - 1)))} disabled={sizeNow <= 1}><Minus className="h-3 w-3" /></Button>
+              <Input type="number" min={1} value={sizeNow} onChange={e => setMagSize(e.target.value)} className="h-8 w-20 text-xs text-center" aria-label="Magazine size" />
+              <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setMagSize(String(sizeNow + 1))}><Plus className="h-3 w-3" /></Button>
+              <span className="text-[11px] text-muted-foreground">rounds. You pick it; the starting value is a placeholder default for this reload method ({defaultMagazineSize(storage, cycling)}).</span>
+              {magSize !== '' && <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setMagSize('')}>Use default</Button>}
+            </div>
+            <p className="text-[11px] text-muted-foreground">Each attack uses one round. Reload on the gun card refills it from your Inventory ammo.</p>
           </div>
 
           {/* Interchangeable attachments */}

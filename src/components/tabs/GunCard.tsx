@@ -5,7 +5,7 @@ import type { Firearm } from '../../types/character';
 import { getProfDice, effAttr } from '../../utils/mechanics';
 import {
   getAmmo, ammoDice, getGunProfDef, resolveGunProf, getGunWeaponBonus, getGunBonusParts, getGunReceiver, describeGun,
-  getTierDamage, hitTierLabel, DAMAGE_TIERS, getLoadedAmmo, getLoadedRound, getLoadOptions, fmtMult, fmtAp,
+  getTierDamage, hitTierLabel, DAMAGE_TIERS, getMagazineSize, getRoundsLeft, ammoKey, getAmmoCount, getLoadedAmmo, getLoadedRound, getLoadOptions, fmtMult, fmtAp,
   type HitTierKey, type Ammo, type AmmoRound,
 } from '../../utils/gunData';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Edit2, Trash2, Link, Unlink, ArrowUp, ArrowDown, Minus, Plus, Swords } from 'lucide-react';
+import { Edit2, Trash2, Link, Unlink, ArrowUp, ArrowDown, Minus, Plus, Swords, RefreshCw } from 'lucide-react';
 import RollButton from '../dice/RollButton';
+import BoxTracker from '../sheet/BoxTracker';
 import { useCombat } from '../../context/CombatContext';
+import { toast } from 'sonner';
+import { usePersistedState } from '../../utils/usePersistedState';
 
 /** Damage by hit tier: graze = the base dice; flesh x round multiplier; solid x (multiplier + 0.5); vital x (multiplier + 2). */
 function GunDamageButton({ label, ammo, round }: { label: string; ammo: Ammo; round: AmmoRound }) {
@@ -73,7 +76,7 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
   const { character: c, setCharacter } = useChar();
   const { currentRoll } = useDiceRoll();
   // Stabilizing takes a reaction and removes every barrel-length and ammo-size penalty, on the first shot only.
-  const [stabilized, setStabilized] = useState(false);
+  const [stabilized, setStabilized] = usePersistedState(`botv_stab:${gun.id}`, false);
   const { turnKey, reactionsLeft, spendReaction, refundReaction } = useCombat();
   // Stabilizing spends a reaction from the turn's pool; taking it back refunds it.
   const toggleStabilize = () => {
@@ -81,14 +84,23 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
     else if (spendReaction()) setStabilized(true);
   };
   // A new turn (or combat starting or ending) refills the reactions and clears the stabilize
-  useEffect(() => { setStabilized(false); }, [turnKey]);
+  // (not on first load, so a reload mid-turn keeps a stabilize)
+  const firstTurnKey = useRef(turnKey);
+  useEffect(() => { if (turnKey !== firstTurnKey.current) setStabilized(false); }, [turnKey, setStabilized]);
   const seenRoll = useRef(currentRoll?.id);
   useEffect(() => {
     if (!currentRoll || currentRoll.id === seenRoll.current) return;
     seenRoll.current = currentRoll.id;
-    if (currentRoll.label === `${gun.name} Attack`) setStabilized(false);
-  }, [currentRoll, gun.name]);
+    if (currentRoll.label === `${gun.name} Attack`) {
+      setStabilized(false);
+      // Semi-auto: every attack uses one round (burst and full-auto rules are not built yet)
+      setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).map(g => g.id === gun.id ? { ...g, rounds: Math.max(0, getRoundsLeft(g) - 1) } : g) }));
+    }
+  }, [currentRoll, gun.name, gun.id, setCharacter]);
   const [challenge, setChallenge] = useState(1);
+  const magSize = getMagazineSize(gun);
+  const roundsLeft = getRoundsLeft(gun);
+  const setRounds = (n: number) => setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).map(g => g.id === gun.id ? { ...g, rounds: Math.max(0, Math.min(getMagazineSize(g), n)) } : g) }));
 
   const fit = resolveGunProf(c, gun);
   const prof = fit.prof;
@@ -99,8 +111,43 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
   const round = getLoadedRound(gun);
   const setLoad = (v: string) => {
     const [am, ro] = v.split(':');
-    setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).map(g => g.id === gun.id ? { ...g, loadedAmmoId: am === g.ammoId ? undefined : am, roundId: ro } : g) }));
+    if (loaded && round && am === loaded.id && ro === round.id) return;
+    setCharacter(p => {
+      const cur = (p.firearms ?? []).find(g => g.id === gun.id);
+      if (!cur) return p;
+      // Changing ammo unloads the magazine back into the inventory. A gun that has never fired is still on its
+      // free starting load, so it just switches.
+      const curAmmo = getLoadedAmmo(cur), curRound = getLoadedRound(cur);
+      const back = cur.rounds !== undefined && curAmmo && curRound ? getRoundsLeft(cur) : 0;
+      const key = curAmmo && curRound ? ammoKey(curAmmo.id, curRound.id) : '';
+      return {
+        ...p,
+        ammoStock: back > 0 ? { ...(p.ammoStock ?? {}), [key]: (p.ammoStock?.[key] ?? 0) + back } : p.ammoStock,
+        firearms: (p.firearms ?? []).map(g => g.id === gun.id
+          ? { ...g, loadedAmmoId: am === g.ammoId ? undefined : am, roundId: ro, rounds: cur.rounds === undefined ? undefined : 0 } : g),
+      };
+    });
   };
+  // Reload pulls rounds for the loaded ammo out of the inventory
+  const reserve = loaded && round ? getAmmoCount(c, loaded.id, round.id) : 0;
+  const reload = () => {
+    if (!loaded || !round) return;
+    const needed = magSize - roundsLeft;
+    if (needed <= 0) return;
+    if (reserve <= 0) {
+      toast.error(`No ${loaded.label} ${round.label} in your inventory`, { description: 'Add some under Inventory > Ammo.' });
+      return;
+    }
+    const take = Math.min(needed, reserve);
+    const key = ammoKey(loaded.id, round.id);
+    setCharacter(p => ({
+      ...p,
+      ammoStock: { ...(p.ammoStock ?? {}), [key]: Math.max(0, (p.ammoStock?.[key] ?? 0) - take) },
+      firearms: (p.firearms ?? []).map(g => g.id === gun.id ? { ...g, rounds: Math.min(getMagazineSize(g), getRoundsLeft(g) + take) } : g),
+    }));
+    toast.success(`Reloaded ${take} round${take === 1 ? '' : 's'}`, { description: `${reserve - take} ${loaded.label} ${round.label} left in your inventory` });
+  };
+  const setMagSizeTo = (n: number) => setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).map(g => g.id === gun.id ? { ...g, magazineSize: Math.max(1, Math.floor(n) || 1) } : g) }));
   const receiver = getGunReceiver(gun.receiver);
   const bonus = getGunWeaponBonus(gun);
   // With the proficiency: its dice (3 + DEX + INT/WIS + level + modifiers). Without: just 3 + INT or WIS (no DEX).
@@ -149,6 +196,25 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
       </div>
 
       <div className="rounded bg-muted/30 border border-border/50 px-2.5 py-2 space-y-1.5">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">Magazine{roundsLeft === 0 ? <span className="text-destructive font-semibold"> · empty</span> : ''}<span className="text-[11px]"> · reserve {reserve}</span></span>
+            <Button size="sm" variant="outline" className="h-6 text-[11px] px-2 gap-1" onClick={reload} disabled={roundsLeft >= magSize}
+              title="Refill the magazine from your inventory ammo">
+              <RefreshCw className="h-3 w-3" />Reload
+            </Button>
+          </div>
+          <div className="flex items-center gap-1" title="How many rounds this gun's magazine holds">
+            <span className="text-[11px] text-muted-foreground shrink-0">Magazine size:</span>
+            <Button size="icon" variant="outline" className="h-5 w-5 shrink-0" onClick={() => setMagSizeTo(magSize - 1)} disabled={magSize <= 1}><Minus className="h-2.5 w-2.5" /></Button>
+            <Input type="number" min={1} value={magSize} onChange={e => setMagSizeTo(parseInt(e.target.value))} className="h-5 w-12 text-[11px] px-1 text-center" aria-label="Magazine size" />
+            <Button size="icon" variant="outline" className="h-5 w-5 shrink-0" onClick={() => setMagSizeTo(magSize + 1)}><Plus className="h-2.5 w-2.5" /></Button>
+          </div>
+          <BoxTracker current={roundsLeft} max={magSize} onChange={setRounds} filledClass="bg-amber-500" />
+          {gun.cycling === 'automatic' && gun.autoModes?.some(m => m === 'burst' || m === 'full') && (
+            <p className="text-[11px] text-muted-foreground italic">Burst and full-auto are not built yet: every attack uses one round, like semi-auto.</p>
+          )}
+        </div>
         {(
           <>
             <div className="flex items-center justify-between gap-2">
@@ -156,8 +222,8 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
                 <span className="text-muted-foreground">Atk: </span>
                 <span className="font-bold text-foreground">{attackDice}d6</span>
               </div>
-              <RollButton label={`${gun.name} Attack`} diceCount={attackDice} size="sm"
-                extras={{ hitTierChallenge: challenge, hitTierRound: loaded && round ? { multiplier: round.multiplier, baseInjury: loaded.baseInjury } : undefined }} />
+              {roundsLeft <= 0 ? <span className="text-[11px] text-destructive">Reload to fire</span> : <RollButton label={`${gun.name} Attack`} diceCount={attackDice} size="sm"
+                extras={{ hitTierChallenge: challenge, hitTierRound: loaded && round ? { multiplier: round.multiplier, baseInjury: loaded.baseInjury } : undefined }} />}
             </div>
             <div className="text-[11px] text-muted-foreground font-mono">
               {prof ? `Prof(${profDice}d6${penalty ? `, -${penalty}: ${fit.reason}` : ''})` : `3 + ${mental.toUpperCase()}(${effAttr(c, mental)})`} + Weapon(+{bonus}d6: {bonusText})

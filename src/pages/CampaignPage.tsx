@@ -5,9 +5,15 @@ import {
   getCampaignCharacters, getFriendRequests, addCharacterToCampaign,
   removeCampaignCharacter, getFriendCharacters, createAndAssignCharacter,
   assignCampaignCharacter, invitePlayerToCampaign, addMyCharacterToCampaign,
+  setCampaignCharacterVisibility, getVisibleCampaignCharacters,
 } from '../lib/api/social';
-import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType } from '../lib/api/social';
-import { getCharacters } from '../lib/api/characters';
+import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType, VisibleCampaignCharacter } from '../lib/api/social';
+import { VISIBILITY_LEVELS, visibilityLabel } from '../utils/visibility';
+import type { CharacterVisibility } from '../utils/visibility';
+import { getCharacters, saveCharacter } from '../lib/api/characters';
+import { saveLocalCharacter } from '../utils/storage';
+import CreateCharacterDialog from '../components/CreateCharacterDialog';
+import type { Character } from '../types/character';
 import type { GetCharactersOutputType } from '../lib/api/characters';
 import { createDefaultCharacter } from '../utils/defaults';
 import { Button } from '@/components/ui/button';
@@ -475,8 +481,11 @@ export default function CampaignPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addMyCharOpen, setAddMyCharOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<CampaignChar | null>(null);
   const [assignTarget, setAssignTarget] = useState<CampaignChar | null>(null);
+  const [party, setParty] = useState<VisibleCampaignCharacter[]>([]);
+  const [partyError, setPartyError] = useState('');
 
   const load = useCallback(async () => {
     if (!campaignId) return;
@@ -488,6 +497,11 @@ export default function CampaignPage() {
       ]);
       setData(r);
       setFriends(fr.friends);
+      // Characters other people made visible to me (the GM already sees everyone)
+      if (!r.campaign.isGM) {
+        try { setParty(await getVisibleCampaignCharacters({ campaignId })); setPartyError(''); }
+        catch (e: any) { setParty([]); setPartyError(e.message ?? 'Could not load the party.'); }
+      } else { setParty([]); setPartyError(''); }
     } catch (e: any) { toast.error(e.message ?? 'Failed to load campaign'); navigate('/'); }
     finally { setLoading(false); }
   }, [campaignId, navigate]);
@@ -502,6 +516,32 @@ export default function CampaignPage() {
       setRemoveTarget(null);
       load();
     } catch { toast.error('Failed to remove character'); }
+  };
+
+  // Create a brand-new character for yourself right here: it is saved to your account like any other character and
+  // added to this campaign, then opened.
+  const handleCreateMine = async (char: Character) => {
+    if (!campaignId) return;
+    try {
+      saveLocalCharacter(char);
+      const saved = await saveCharacter({ name: char.name, characterType: char.characterType, level: char.level, data: JSON.stringify(char) });
+      saveLocalCharacter({ ...char, cloudId: saved.cloudId, cloudSyncedAt: saved.updatedAt });
+      const added = await addMyCharacterToCampaign({ campaignId, characterId: saved.cloudId });
+      setCreateOpen(false);
+      toast.success(`"${char.name}" created and added to the campaign!`);
+      navigate(`/campaign/${campaignId}/character/${added.campaignCharacterId}`);
+    } catch (e: any) {
+      toast.error(e.message ?? 'Failed to create the character');
+      load();
+    }
+  };
+
+  const handleVisibility = async (char: CampaignChar, visibility: CharacterVisibility) => {
+    try {
+      await setCampaignCharacterVisibility({ campaignCharacterId: char.id, visibility });
+      setData(d => d ? { ...d, characters: d.characters.map(c => c.id === char.id ? { ...c, visibility } : c) } : d);
+      toast.success(visibility === 'hidden' ? `"${char.name}" is hidden from the other players.` : `"${char.name}" is now visible to the other players: ${visibilityLabel(visibility)}.`);
+    } catch (e: any) { toast.error(e.message ?? 'Failed to change visibility'); }
   };
 
   if (loading) {
@@ -539,6 +579,9 @@ export default function CampaignPage() {
               <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
                 <Mail className="h-4 w-4 mr-1" />Invite Player
               </Button>
+              <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+                <Sword className="h-4 w-4 mr-1" />Create Character
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setAddMyCharOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" />Add My Character
               </Button>
@@ -548,9 +591,14 @@ export default function CampaignPage() {
             </>
           )}
           {!isGM && isInvitedMember && (
-            <Button size="sm" onClick={() => setAddMyCharOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />Add My Character
-            </Button>
+            <>
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Sword className="h-4 w-4 mr-1" />Create Character
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAddMyCharOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />Add My Character
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -572,7 +620,7 @@ export default function CampaignPage() {
           <div className="text-center py-20 space-y-3 text-muted-foreground">
             <Sword className="h-12 w-12 mx-auto opacity-40" />
             {isGM && <p>No characters yet. Add your own, add a friend's, or create one!</p>}
-            {!isGM && isInvitedMember && <p>You've been invited! Add your character to get started.</p>}
+            {!isGM && isInvitedMember && <p>You've been invited! Create a character or add one of yours to get started.</p>}
             {!isGM && !isInvitedMember && <p>No characters in this campaign yet.</p>}
             {isGM && (
               <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -581,7 +629,10 @@ export default function CampaignPage() {
               </div>
             )}
             {!isGM && isInvitedMember && (
-              <Button onClick={() => setAddMyCharOpen(true)}><Plus className="h-4 w-4 mr-1" />Add My Character</Button>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <Button onClick={() => setCreateOpen(true)}><Sword className="h-4 w-4 mr-1" />Create Character</Button>
+                <Button variant="outline" onClick={() => setAddMyCharOpen(true)}><Plus className="h-4 w-4 mr-1" />Add My Character</Button>
+              </div>
             )}
           </div>
         ) : (
@@ -594,8 +645,27 @@ export default function CampaignPage() {
                 onOpen={() => char.canEdit && navigate(`/campaign/${campaignId}/character/${char.id}`)}
                 onRemove={() => setRemoveTarget(char)}
                 onAssign={() => setAssignTarget(char)}
+                onVisibility={v => handleVisibility(char, v)}
               />
             ))}
+          </div>
+        )}
+
+        {/* Characters other people made visible to you */}
+        {!isGM && (party.length > 0 || partyError) && (
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Visible to you</h2>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            {partyError ? (
+              <p className="text-xs text-muted-foreground">{partyError}</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {party.map(p => <PartyCard key={p.id} char={p} onOpen={() => navigate(`/campaign/${campaignId}/view/${p.id}`)} />)}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -621,6 +691,10 @@ export default function CampaignPage() {
           campaignId={campaignId}
           onAdded={load}
         />
+      )}
+
+      {campaignId && (isGM || isInvitedMember) && (
+        <CreateCharacterDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreateMine} allowGM={isGM} />
       )}
 
       <AssignDialog
@@ -651,12 +725,13 @@ export default function CampaignPage() {
 }
 
 // ── Character Card ────────────────────────────────────────────────────────────
-function CharacterCard({ char, isGM, onOpen, onRemove, onAssign }: {
+function CharacterCard({ char, isGM, onOpen, onRemove, onAssign, onVisibility }: {
   char: CampaignChar;
   isGM: boolean;
   onOpen: () => void;
   onRemove: () => void;
   onAssign: () => void;
+  onVisibility: (v: CharacterVisibility) => void;
 }) {
   return (
     <div
@@ -712,6 +787,42 @@ function CharacterCard({ char, isGM, onOpen, onRemove, onAssign }: {
         </div>
 
         {!char.canEdit && <p className="text-xs text-muted-foreground italic">View only</p>}
+
+        {/* Who else in the campaign can see this character (the GM and the player always can) */}
+        {char.canEdit && (
+          <div className="flex items-center gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
+            <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <Select value={char.visibility} onValueChange={v => onVisibility(v as CharacterVisibility)}>
+              <SelectTrigger className="h-7 text-xs flex-1" title="Who else in the campaign can see this character"><SelectValue>{visibilityLabel(char.visibility)}</SelectValue></SelectTrigger>
+              <SelectContent>
+                {VISIBILITY_LEVELS.map(l => (
+                  <SelectItem key={l.id} value={l.id}>{l.label} — {l.description}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Party Card (someone else's character made visible to you) ─────────────────
+function PartyCard({ char, onOpen }: { char: VisibleCampaignCharacter; onOpen: () => void }) {
+  let level = 0;
+  let characterType = 'normal';
+  try { const d = JSON.parse(char.data); level = d.level ?? 0; characterType = d.characterType ?? 'normal'; } catch { /* keep defaults */ }
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 hover:border-primary/50 cursor-pointer transition-colors space-y-2" onClick={onOpen}>
+      <div className="flex items-center gap-1.5">
+        <Eye className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        <h3 className="font-bold text-foreground truncate">{char.name}</h3>
+      </div>
+      {char.playerEmail && <p className="text-xs text-muted-foreground truncate">{char.playerEmail}</p>}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge className={`text-xs border ${TYPE_COLORS[characterType] ?? ''}`}>{TYPE_LABELS[characterType] ?? characterType}</Badge>
+        <span className="text-xs text-muted-foreground">Level {level}</span>
+        <Badge variant="outline" className="text-[10px]">{visibilityLabel(char.visibility)}</Badge>
       </div>
     </div>
   );
