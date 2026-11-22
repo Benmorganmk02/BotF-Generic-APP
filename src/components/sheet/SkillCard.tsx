@@ -9,7 +9,7 @@ import { ChevronUp, ChevronDown } from 'lucide-react';
 const MAX_SKILL = 5; const MIN_SKILL = -3;
 
 /** Returns 0 (normal), 1 (5+), 2 (6 only), or 'auto-fail' based on combined attr+skill value */
-function getSkillDisadvLevel(combined: number): 0 | 1 | 2 | 'auto-fail' {
+export function getSkillDisadvLevel(combined: number): 0 | 1 | 2 | 'auto-fail' {
   if (combined <= -5) return 'auto-fail';
   if (combined <= -3) return 2;
   if (combined <= -1) return 1;

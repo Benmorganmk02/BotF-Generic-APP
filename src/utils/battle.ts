@@ -34,11 +34,22 @@ export interface Drawing {
   points: [number, number][];
 }
 export const MAX_STROKES = 60;
+
+/** The kinds of magic effect the GM can put down on the map (see EffectView for how each looks). */
+export const EFFECT_KINDS = ['fire', 'frost', 'lightning', 'poison', 'arcane', 'water', 'darkness'] as const;
+export type EffectKind = typeof EFFECT_KINDS[number];
+/** An area effect on the map, like a spell's blast: a fire burning, a patch of ice. Centre in metres, radius in metres. */
+export interface MapEffect { id: string; kind: EffectKind; x: number; y: number; radius: number }
+export const MAX_EFFECTS = 30;
+export const MIN_EFFECT_RADIUS = 0.5;
+export const MAX_EFFECT_RADIUS = 30;
 export const MAX_POINTS = 400;
 
 export interface BattleState {
   /** The GM's drawings on the map. */
   drawings?: Drawing[];
+  /** Magic effects the GM put down (fire, ice...). */
+  effects?: MapEffect[];
   /** True while the GM has combat running; the map shows for everyone then. */
   active: boolean;
   cols: number;
@@ -48,6 +59,17 @@ export interface BattleState {
 }
 
 export const newBattle = (): BattleState => ({ active: true, cols: BATTLE_COLS, rows: BATTLE_ROWS, tokens: [], startedAt: new Date().toISOString() });
+
+const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+function parseEffects(raw: unknown): MapEffect[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: MapEffect[] = [];
+  for (const e of raw) {
+    if (!e || typeof e.id !== 'string' || !(EFFECT_KINDS as readonly string[]).includes(e.kind) || typeof e.x !== 'number' || typeof e.y !== 'number' || typeof e.radius !== 'number') continue;
+    out.push({ id: e.id, kind: e.kind, x: e.x, y: e.y, radius: clampN(e.radius, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS) });
+  }
+  return out.slice(0, MAX_EFFECTS);
+}
 
 function parseDrawings(raw: unknown): Drawing[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -69,7 +91,7 @@ export function parseBattle(raw: unknown): BattleState | null {
     !!t && typeof t.id === 'string' && typeof t.name === 'string' && (t.kind === 'pc' || t.kind === 'npc') && typeof t.x === 'number' && typeof t.y === 'number');
   let top = Math.max(0, ...tokens.filter(t => t.kind === 'npc').map(t => t.num ?? 0));
   const numbered = tokens.map(t => (t.kind === 'npc' && !t.num ? { ...t, num: ++top } : t));
-  return { active: b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens: numbered, startedAt: b.startedAt, drawings: parseDrawings((b as { drawings?: unknown }).drawings) };
+  return { active: b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens: numbered, startedAt: b.startedAt, drawings: parseDrawings((b as { drawings?: unknown }).drawings), effects: parseEffects((b as { effects?: unknown }).effects) };
 }
 
 /** How a player sees a token: their own character, an ally (other players and friendly NPCs) or an enemy. */
@@ -188,4 +210,16 @@ export const upsertStroke = (b: BattleState, s: Drawing): BattleState => {
 };
 export const undoStroke = (b: BattleState): BattleState => ({ ...b, drawings: (b.drawings ?? []).slice(0, -1) });
 export const clearDrawings = (b: BattleState): BattleState => ({ ...b, drawings: [] });
+/** GM: puts an effect on the map, or replaces the one with the same id (moving or resizing it). Whole or half metres, on the map. */
+export const upsertEffect = (b: BattleState, e: MapEffect): BattleState => {
+  const fx: MapEffect = {
+    ...e, x: clampN(Math.round(e.x * 2) / 2, 0, b.cols), y: clampN(Math.round(e.y * 2) / 2, 0, b.rows),
+    radius: clampN(Math.round((Number.isFinite(e.radius) ? e.radius : 2) * 2) / 2, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS),
+  };
+  const all = b.effects ?? [];
+  const next = all.some(k => k.id === fx.id) ? all.map(k => (k.id === fx.id ? fx : k)) : [...all, fx];
+  return { ...b, effects: next.slice(-MAX_EFFECTS) };
+};
+export const removeEffect = (b: BattleState, id: string): BattleState => ({ ...b, effects: (b.effects ?? []).filter(e => e.id !== id) });
+export const clearEffects = (b: BattleState): BattleState => ({ ...b, effects: [] });
 export const setHostile = (b: BattleState, id: string, hostile: boolean): BattleState => ({ ...b, tokens: b.tokens.map(t => (t.id === id ? { ...t, hostile } : t)) });

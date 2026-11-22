@@ -1,13 +1,14 @@
 import type { GetCampaignCharactersOutputType, MapPing } from '../../lib/api/social';
 import { useState } from 'react';
-import type { BattleState, BattleToken, Drawing } from '../../utils/battle';
-import { addToken, removeToken, setHostile, setLabel, undoStroke, clearDrawings, defaultNpcBase, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
+import type { BattleState, BattleToken, Drawing, EffectKind, MapEffect } from '../../utils/battle';
+import { EFFECT_KINDS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, upsertEffect, removeEffect, clearEffects, addToken, removeToken, setHostile, setLabel, undoStroke, clearDrawings, defaultNpcBase, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
 import BattleMap from './BattleMap';
 import type { MapTool } from './BattleMap';
+import { EFFECT_STYLES } from './EffectView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Crosshair, Eraser, Footprints, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
+import { Crosshair, Eraser, Flame, Footprints, Minus, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
 
 const DRAW_COLORS = ['#ffffff', '#ef4444', '#facc15', '#22c55e', '#38bdf8'];
 
@@ -18,13 +19,15 @@ const isNpcChar = (c: CampaignChar) => c.characterType === 'gm' || c.isNpc;
 
 /** The battle map for a running combat. Everyone in the campaign sees the map and a player moves their own token; the
  * GM moves every token, adds characters to it, and sets whether each NPC is friendly or hostile. */
-export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke }: {
+export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke, onEffect }: {
   battle: BattleState; characters: CampaignChar[]; isGM: boolean; viewerId: string;
   onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void;
-  pings: MapPing[]; onPing: (x: number, y: number) => void; onDrawStroke: (s: Drawing) => void;
+  pings: MapPing[]; onPing: (x: number, y: number) => void; onDrawStroke: (s: Drawing) => void; onEffect: (e: MapEffect) => void;
 }) {
   const [tool, setTool] = useState<MapTool>('move');
   const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
+  const [fxKind, setFxKind] = useState<EffectKind>('fire');
+  const [fxRadius, setFxRadius] = useState(2);
   const toolButton = (id: MapTool, label: string, Icon: typeof Pencil) => (
     <Button size="sm" variant={tool === id ? 'default' : 'outline'} className="h-7 text-xs gap-1" onClick={() => setTool(id)} aria-pressed={tool === id}><Icon className="h-3 w-3" />{label}</Button>
   );
@@ -57,6 +60,7 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
       <div className="flex items-center gap-1.5 flex-wrap">
         {toolButton('move', 'Move', MousePointer2)}
         {isGM && toolButton('draw', 'Draw', Pencil)}
+        {isGM && toolButton('effect', 'Effect', Flame)}
         {toolButton('ping', 'Ping', Crosshair)}
         {isGM && tool === 'draw' && (
           <>
@@ -70,13 +74,32 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(clearDrawings(battle))} disabled={!battle.drawings?.length}><Eraser className="h-3 w-3" />Clear drawings</Button>
           </>
         )}
+        {isGM && tool === 'effect' && (
+          <>
+            <span className="flex items-center gap-1 ml-1">
+              {EFFECT_KINDS.map(k => (
+                <button key={k} type="button" aria-label={EFFECT_STYLES[k].label} title={EFFECT_STYLES[k].label} aria-pressed={fxKind === k} onClick={() => setFxKind(k)}
+                  className={`h-7 w-7 rounded-md border-2 text-sm leading-none ${fxKind === k ? 'border-primary bg-primary/10' : 'border-border'}`}>{EFFECT_STYLES[k].emoji}</button>
+              ))}
+            </span>
+            <span className="flex items-center gap-1">
+              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setFxRadius(r => Math.max(MIN_EFFECT_RADIUS, r - 1))} disabled={fxRadius <= MIN_EFFECT_RADIUS} aria-label="Smaller effect"><Minus className="h-3 w-3" /></Button>
+              <Input type="number" min={MIN_EFFECT_RADIUS} max={MAX_EFFECT_RADIUS} step={0.5} value={fxRadius} aria-label="Effect radius in metres" className="h-7 w-16 text-xs text-center px-1"
+                onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) setFxRadius(Math.max(MIN_EFFECT_RADIUS, Math.min(MAX_EFFECT_RADIUS, v))); }} />
+              <span className="text-xs text-muted-foreground">m radius</span>
+              <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setFxRadius(r => Math.min(MAX_EFFECT_RADIUS, r + 1))} disabled={fxRadius >= MAX_EFFECT_RADIUS} aria-label="Bigger effect"><Plus className="h-3 w-3" /></Button>
+            </span>
+          </>
+        )}
+        {tool === 'effect' && <span className="text-[11px] text-muted-foreground">Tap the map to put the effect down. Drag one to move it.</span>}
         {tool === 'ping' && <span className="text-[11px] text-muted-foreground">Tap the map to ping a spot. Everyone sees it for a few seconds.</span>}
         {tool === 'draw' && <span className="text-[11px] text-muted-foreground">Drag on the map to draw. Players see it live.</span>}
       </div>
 
       <BattleMap battle={battle} isGM={isGM} viewerId={viewerId}
         canMove={t => isGM || (t.kind === 'pc' && t.owner === viewerId)}
-        onMove={onMoveToken} tool={tool} drawColor={drawColor} pings={pings} onPing={onPing} onStroke={onDrawStroke} />
+        onMove={onMoveToken} tool={tool} drawColor={drawColor} pings={pings} onPing={onPing} onStroke={onDrawStroke}
+        effectKind={fxKind} effectRadius={fxRadius} onEffect={onEffect} />
 
       {/* legend: the colours mean different things to the GM and to a player */}
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-muted-foreground">
@@ -95,6 +118,27 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
           </>
         )}
       </div>
+
+      {isGM && (battle.effects?.length ?? 0) > 0 && (
+        <div className="rounded-md border border-border bg-muted/20 px-2.5">
+          {battle.effects!.map(fx => (
+            <div key={fx.id} className="flex items-center gap-2 py-1.5 border-t border-border/50 first:border-t-0">
+              <span className="text-sm leading-none">{EFFECT_STYLES[fx.kind].emoji}</span>
+              <span className="text-xs font-medium text-foreground flex-1">{EFFECT_STYLES[fx.kind].label}</span>
+              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => onChange(upsertEffect(battle, { ...fx, radius: fx.radius - 1 }))} disabled={fx.radius <= MIN_EFFECT_RADIUS} aria-label={`Smaller ${EFFECT_STYLES[fx.kind].label}`}><Minus className="h-3 w-3" /></Button>
+              <Input key={fx.radius} type="number" min={MIN_EFFECT_RADIUS} max={MAX_EFFECT_RADIUS} step={0.5} defaultValue={fx.radius} aria-label={`${EFFECT_STYLES[fx.kind].label} radius in metres`} className="h-6 w-14 text-[11px] text-center px-1"
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                onBlur={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v !== fx.radius) onChange(upsertEffect(battle, { ...fx, radius: v })); }} />
+              <span className="text-[11px] text-muted-foreground">m</span>
+              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => onChange(upsertEffect(battle, { ...fx, radius: fx.radius + 1 }))} disabled={fx.radius >= MAX_EFFECT_RADIUS} aria-label={`Bigger ${EFFECT_STYLES[fx.kind].label}`}><Plus className="h-3 w-3" /></Button>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onChange(removeEffect(battle, fx.id))} aria-label={`Remove ${EFFECT_STYLES[fx.kind].label}`} title="Put the effect out"><X className="h-3 w-3" /></Button>
+            </div>
+          ))}
+          <div className="py-1.5 border-t border-border/50 text-right">
+            <button className="text-[11px] text-muted-foreground underline underline-offset-2" onClick={() => onChange(clearEffects(battle))}>Clear all effects</button>
+          </div>
+        </div>
+      )}
 
       {isGM && (
         <div className="space-y-2">

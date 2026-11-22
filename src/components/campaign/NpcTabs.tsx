@@ -3,14 +3,16 @@ import { useChar } from '../../context/CharacterContext';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { useCombat } from '../../context/CombatContext';
 import { usePersistedState } from '../../utils/usePersistedState';
-import { getMagicRollDice } from '../../utils/mechanics';
+import { getMagicRollDice, effAttr, effSkill } from '../../utils/mechanics';
+import { getSkillDisadvLevel } from '../sheet/SkillCard';
 import { MAGIC_SCHOOLS } from '../../utils/magicTrees';
 import { ABILITY_TREES, describeUse } from '../../utils/abilityTrees';
 import type { AbilityUse } from '../../utils/abilityTrees';
 import {
   INJURY_LEVELS, getArmorForLocation, getInjuries, getTotalInjuryDiceLoss, resolveHitVsArmor, applyArmorDegrade,
 } from '../../utils/armorInjury';
-import { INJURY_LOCATIONS, INJURY_LOCATION_LABELS } from '../../types/character';
+import { INJURY_LOCATIONS, INJURY_LOCATION_LABELS, ATTRIBUTE_INFO, SKILL_LABELS } from '../../types/character';
+import type { AttributeKey } from '../../types/character';
 import type { AbilityEntry, InjuryLevel, InjuryLocation } from '../../types/character';
 import { SpellBuilder } from '../tabs/MagicTab';
 import BerzerkPanel from '../sheet/BerzerkPanel';
@@ -204,6 +206,49 @@ export function NpcArmor() {
         <Button size="sm" className="h-7 text-xs" onClick={applyHit}>Apply hit</Button>
       </div>
       <p className="text-[11px] text-muted-foreground">Apply hit takes the successes against this location's armor, wears the armor down and records the injury. Edit the armor pieces themselves on the full sheet.</p>
+    </div>
+  );
+}
+
+// ── Skills: the Strength, Dexterity and Wisdom skills as one compact list, each with its dice and a roll button ─────
+const SKILL_GROUPS: AttributeKey[] = ['str', 'dex', 'wis'];
+
+export function NpcSkills() {
+  const { character: c } = useChar();
+  const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
+      {SKILL_GROUPS.map(attr => {
+        const { abbr, full, skills } = ATTRIBUTE_INFO[attr];
+        const effA = effAttr(c, attr);
+        return (
+          <div key={attr} className="min-w-0">
+            <div className="flex items-baseline gap-1.5 border-b border-border pb-1 mb-0.5">
+              <span className="text-xs font-bold text-primary">{abbr}</span>
+              <span className="text-[11px] text-muted-foreground">{full} {sign(effA)}</span>
+            </div>
+            {skills.map(sk => {
+              const combined = effA + effSkill(c, sk);
+              const dice = Math.max(3, 3 + combined);
+              const dis = getSkillDisadvLevel(combined);
+              return (
+                <div key={sk} className="flex items-center gap-1.5 py-0.5 border-b border-border/40 last:border-b-0">
+                  <span className="text-xs text-foreground flex-1 truncate" title={`3 ${sign(effA)} ${sign(effSkill(c, sk))}`}>{SKILL_LABELS[sk]}</span>
+                  {dis === 'auto-fail' ? (
+                    <span className="text-[11px] font-bold text-destructive">Auto-fail</span>
+                  ) : (
+                    <>
+                      {dis > 0 && <span className="text-[10px] font-medium text-destructive">Dis{dis}</span>}
+                      <span className="text-xs font-semibold text-foreground tabular-nums">{dice}d6</span>
+                      <RollButton label={SKILL_LABELS[sk]} diceCount={dice} size="sm" inherentDisadvLvl={dis as number} extras={{ inherentDisadvLvl: dis as number }} />
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

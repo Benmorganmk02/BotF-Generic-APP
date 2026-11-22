@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import type { BattleState, BattleToken, Drawing } from '../../utils/battle';
-import { TOKEN_SIZE, WALK_SPEED, MAX_POINTS, movementLeft, playerRole, tokenColor, tokenName } from '../../utils/battle';
+import type { BattleState, BattleToken, Drawing, EffectKind, MapEffect } from '../../utils/battle';
+import EffectView from './EffectView';
+import { TOKEN_SIZE, WALK_SPEED, MAX_POINTS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, movementLeft, playerRole, tokenColor, tokenName } from '../../utils/battle';
 import type { MapPing } from '../../lib/api/social';
 
-/** What a click or drag on the map does: move tokens, draw (GM), or ping a spot for everyone. */
-export type MapTool = 'move' | 'draw' | 'ping';
+/** What a click or drag on the map does: move tokens, draw or put down a magic effect (GM), or ping a spot for everyone. */
+export type MapTool = 'move' | 'draw' | 'ping' | 'effect';
 
 // long names are cut short, but a trailing number ("Hooded Stranger 2") always stays
 const short = (name: string) => {
@@ -18,7 +19,7 @@ const strokePath = (pts: [number, number][]) => pts.map((p, i) => `${i ? 'L' : '
 
 /** The battle grid: 1 metre squares, characters as 2x2 tokens. The GM can drag every token, a player only their own.
  * With the Draw tool the GM draws on the map; with the Ping tool anyone drops a marker everyone sees for a moment. */
-export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, tool = 'move', drawColor = '#ffffff', pings = [], onPing, onStroke }: {
+export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, tool = 'move', drawColor = '#ffffff', pings = [], onPing, onStroke, effectKind = 'fire', effectRadius = 2, onEffect }: {
   battle: BattleState; isGM: boolean; viewerId: string; canMove: (t: BattleToken) => boolean;
   /** Reports a new square; returns where the token really ended up (a player can be held to their movement). */
   onMove: (id: string, x: number, y: number) => { x: number; y: number } | void;
@@ -26,10 +27,13 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
   onPing?: (x: number, y: number) => void;
   /** The GM's stroke so far (called while drawing and once more when the pen lifts). */
   onStroke?: (stroke: Drawing) => void;
+  /** The GM's Effect tool: the kind and radius a new effect gets, and a callback for placing or moving one. */
+  effectKind?: EffectKind; effectRadius?: number; onEffect?: (e: MapEffect) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [live, setLive] = useState<Drawing | null>(null);
+  const [fxDrag, setFxDrag] = useState<{ id: string; x: number; y: number; radius: number } | null>(null);
   const { cols, rows } = battle;
 
   const toGrid = (clientX: number, clientY: number) => {
@@ -72,6 +76,53 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
     e.preventDefault();
     const p = toGrid(e.clientX, e.clientY);
     if (tool === 'ping') { const [x, y] = inside(p); onPing?.(x, y); return; }
+    if (tool === 'effect') {
+      if (!isGM || !onEffect) return;
+      const snap = (n: number) => Math.round(n * 2) / 2;
+      const handle = (e.target as Element).closest?.('[data-fx-handle]');
+      const hit = handle ?? (e.target as Element).closest?.('[data-effect]');
+      const old = hit ? battle.effects?.find(k => k.id === (hit.getAttribute('data-fx-handle') ?? hit.getAttribute('data-effect'))) : undefined;
+      if (old && handle) {
+        // the handle on the edge: drag to make the effect as big or as small as needed
+        let lastR = old.radius;
+        setFxDrag({ id: old.id, x: old.x, y: old.y, radius: lastR });
+        const resize = (ev: PointerEvent) => {
+          const q = toGrid(ev.clientX, ev.clientY);
+          const radius = Math.max(MIN_EFFECT_RADIUS, Math.min(MAX_EFFECT_RADIUS, Math.round(Math.hypot(q.x - old.x, q.y - old.y) * 2) / 2));
+          if (radius === lastR) return;
+          lastR = radius;
+          setFxDrag({ id: old.id, x: old.x, y: old.y, radius });
+          onEffect({ ...old, radius });
+        };
+        const done = () => { window.removeEventListener('pointermove', resize); window.removeEventListener('pointerup', done); setFxDrag(null); };
+        window.addEventListener('pointermove', resize);
+        window.addEventListener('pointerup', done);
+        return;
+      }
+      if (!old) {
+        // empty ground: put a new effect down
+        const [x, y] = inside(p);
+        onEffect({ id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, kind: effectKind, x: snap(x), y: snap(y), radius: effectRadius });
+        return;
+      }
+      // on an effect: drag it (a fire that spreads, a wall of ice that moves)
+      const dx = p.x - old.x, dy = p.y - old.y;
+      let last = { x: old.x, y: old.y };
+      setFxDrag({ id: old.id, ...last, radius: old.radius });
+      const move = (ev: PointerEvent) => {
+        const q = toGrid(ev.clientX, ev.clientY);
+        const [nx, ny] = inside({ x: q.x - dx, y: q.y - dy });
+        const next = { x: snap(nx), y: snap(ny) };
+        if (next.x === last.x && next.y === last.y) return;
+        last = next;
+        setFxDrag({ id: old.id, ...last, radius: old.radius });
+        onEffect({ ...old, ...last });
+      };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); setFxDrag(null); };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      return;
+    }
     if (!isGM || !onStroke) return;
     const id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     let pts: [number, number][] = [inside(p)];
@@ -106,6 +157,10 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
       <rect x={0} y={0} width={cols} height={rows} fill="#0b0a14" />
       {Array.from({ length: cols + 1 }, (_, i) => <line key={`v${i}`} x1={i} y1={0} x2={i} y2={rows} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} strokeWidth={0.03} />)}
       {Array.from({ length: rows + 1 }, (_, i) => <line key={`h${i}`} x1={0} y1={i} x2={cols} y2={i} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} strokeWidth={0.03} />)}
+      {(battle.effects ?? []).map(fx => {
+        const at = fxDrag?.id === fx.id ? { ...fx, x: fxDrag.x, y: fxDrag.y, radius: fxDrag.radius } : fx;
+        return <EffectView key={fx.id} fx={at} interactive={tool === 'effect' && isGM} />;
+      })}
       {strokes.map(d => (
         <path key={d.id} data-drawing={d.id} d={strokePath(d.points)} fill="none" stroke={d.color} strokeWidth={0.22} strokeLinecap="round" strokeLinejoin="round" strokeOpacity={0.9} style={{ pointerEvents: 'none' }} />
       ))}

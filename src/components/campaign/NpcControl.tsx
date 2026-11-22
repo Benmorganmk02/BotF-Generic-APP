@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { ChevronDown, ChevronRight, Copy, ExternalLink, HeartPulse, Minus, Plus, Swords } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { usePersistedState } from '../../utils/usePersistedState';
-import { NpcMagic, NpcAbilities, NpcArmor } from './NpcTabs';
+import { NpcMagic, NpcAbilities, NpcArmor, NpcSkills } from './NpcTabs';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -223,10 +223,11 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = 
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="h-8 w-full">
-          <TabsTrigger value="weapons" className="flex-1 text-xs py-1">Weapons</TabsTrigger>
-          <TabsTrigger value="magic" className="flex-1 text-xs py-1">Magic</TabsTrigger>
-          <TabsTrigger value="abilities" className="flex-1 text-xs py-1">Abilities</TabsTrigger>
-          <TabsTrigger value="armor" className="flex-1 text-xs py-1">Armor</TabsTrigger>
+          <TabsTrigger value="weapons" className="flex-1 text-xs py-1 px-1">Weapons</TabsTrigger>
+          <TabsTrigger value="magic" className="flex-1 text-xs py-1 px-1">Magic</TabsTrigger>
+          <TabsTrigger value="abilities" className="flex-1 text-xs py-1 px-1">Abilities</TabsTrigger>
+          <TabsTrigger value="armor" className="flex-1 text-xs py-1 px-1">Armor</TabsTrigger>
+          <TabsTrigger value="skills" className="flex-1 text-xs py-1 px-1">Skills</TabsTrigger>
         </TabsList>
         <TabsContent value="weapons" className="mt-2 space-y-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -239,6 +240,7 @@ export default function NpcControl({ npc, onOpenSheet, onDuplicate, collapsed = 
         <TabsContent value="magic" className="mt-2"><NpcMagic /></TabsContent>
         <TabsContent value="abilities" className="mt-2"><NpcAbilities /></TabsContent>
         <TabsContent value="armor" className="mt-2"><NpcArmor /></TabsContent>
+        <TabsContent value="skills" className="mt-2"><NpcSkills /></TabsContent>
       </Tabs>
       </>}
       <DiceResultModal />
