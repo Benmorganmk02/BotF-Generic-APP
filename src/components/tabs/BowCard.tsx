@@ -9,14 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Edit2, Trash2, Target, Link, Unlink, ChevronUp, ChevronDown, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
+import { Copy, Edit2, Trash2, Target, Link, Unlink, ChevronUp, ChevronDown, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import RollButton from '../dice/RollButton';
 import DamageRollButton from '../dice/DamageRollButton';
 import OpponentCounter from '../sheet/OpponentCounter';
 
-interface Props { bow: Bow; onEdit: () => void; onDelete: () => void; onMoveUp?: () => void; onMoveDown?: () => void; }
+interface Props { bow: Bow; onEdit: () => void; onDelete: () => void; onCopy?: () => void; onMoveUp?: () => void; onMoveDown?: () => void; }
 
-export default function BowCard({ bow, onEdit, onDelete, onMoveUp, onMoveDown }: Props) {
+export default function BowCard({ bow, onEdit, onDelete, onCopy, onMoveUp, onMoveDown }: Props) {
   const { character: c, setCharacter } = useChar();
   const { roll } = useDiceRoll();
   const [difficulty, setDifficulty] = useState(0);
@@ -61,6 +61,7 @@ export default function BowCard({ bow, onEdit, onDelete, onMoveUp, onMoveDown }:
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onMoveDown} disabled={!onMoveDown}><ArrowDown className="h-3 w-3" /></Button>
             </>
           )}
+          {onCopy && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCopy} title="Copy this weapon" aria-label="Copy this weapon"><Copy className="h-3 w-3" /></Button>}
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Edit2 className="h-3 w-3" /></Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>

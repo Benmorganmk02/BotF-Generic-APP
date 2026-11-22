@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Edit2, Trash2, Link, Unlink, ArrowUp, ArrowDown, Minus, Plus, Swords, RefreshCw } from 'lucide-react';
+import { Copy, Edit2, Trash2, Link, Unlink, ArrowUp, ArrowDown, Minus, Plus, Swords, RefreshCw } from 'lucide-react';
 import RollButton from '../dice/RollButton';
 import BoxTracker from '../sheet/BoxTracker';
 import { useCombat } from '../../context/CombatContext';
@@ -70,9 +70,9 @@ export function GunDamageButton({ label, ammo, round }: { label: string; ammo: A
   );
 }
 
-interface Props { gun: Firearm; onEdit: () => void; onDelete: () => void; onMoveUp?: () => void; onMoveDown?: () => void }
+interface Props { gun: Firearm; onEdit: () => void; onDelete: () => void; onCopy?: () => void; onMoveUp?: () => void; onMoveDown?: () => void }
 
-export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }: Props) {
+export default function GunCard({ gun, onEdit, onDelete, onCopy, onMoveUp, onMoveDown }: Props) {
   const { character: c, setCharacter } = useChar();
   const { currentRoll } = useDiceRoll();
   // Stabilizing takes a reaction and removes every barrel-length and ammo-size penalty, on the first shot only.
@@ -176,6 +176,7 @@ export default function GunCard({ gun, onEdit, onDelete, onMoveUp, onMoveDown }:
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onMoveDown} disabled={!onMoveDown}><ArrowDown className="h-3 w-3" /></Button>
             </>
           )}
+          {onCopy && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCopy} title="Copy this weapon" aria-label="Copy this weapon"><Copy className="h-3 w-3" /></Button>}
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Edit2 className="h-3 w-3" /></Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>

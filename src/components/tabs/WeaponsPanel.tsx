@@ -14,7 +14,9 @@ import GunCard from './GunCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, Edit2, Plus, Link, Unlink, ArrowUp, ArrowDown } from 'lucide-react';
+import { Copy, Trash2, Edit2, Plus, Link, Unlink, ArrowUp, ArrowDown } from 'lucide-react';
+import { genId } from '../../utils/defaults';
+import { nextCopyNames } from '../../utils/duplicateCharacter';
 import {
   getTotalMultiplierForHandedness, getMultiplierDisplay, getDamageDie,
   getWeaponModifier,
@@ -49,10 +51,11 @@ function weaponSummaryLine(w: Weapon): string {
 }
 
 // ── Weapon Card ───────────────────────────────────────────────────────────────
-function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
+function WeaponCard({ weapon, onEdit, onDelete, onCopy, onMoveUp, onMoveDown }: {
   weapon: Weapon;
   onEdit: () => void;
   onDelete: () => void;
+  onCopy?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
 }) {
@@ -112,6 +115,7 @@ function WeaponCard({ weapon, onEdit, onDelete, onMoveUp, onMoveDown }: {
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onMoveDown} disabled={!onMoveDown}><ArrowDown className="h-3 w-3" /></Button>
             </>
           )}
+          {onCopy && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCopy} title="Copy this weapon" aria-label="Copy this weapon"><Copy className="h-3 w-3" /></Button>}
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Edit2 className="h-3 w-3" /></Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -249,6 +253,19 @@ export default function WeaponsPanel() {
   const deleteCrossbow = (id: string) => setCharacter(p => ({ ...p, crossbows: (p.crossbows ?? []).filter(x => x.id !== id) }));
   const deleteGun = (id: string) => setCharacter(p => ({ ...p, firearms: (p.firearms ?? []).filter(g => g.id !== id) }));
 
+  // Copy a weapon: the same build, a new id and the next free name ("Longsword" gives "Longsword 2"), placed right after it
+  const allNames = [...weapons, ...bows, ...crossbows, ...firearms].map(w => w.name);
+  const withCopy = <T extends { id: string; name: string }>(list: T[], item: T): T[] => {
+    const i = list.findIndex(x => x.id === item.id);
+    const copy: T = { ...(JSON.parse(JSON.stringify(item)) as T), id: genId(), name: nextCopyNames(item.name, allNames, 1)[0] };
+    return [...list.slice(0, i + 1), copy, ...list.slice(i + 1)];
+  };
+  const copyWeapon = (w: Weapon) => setCharacter(p => ({ ...p, weapons: withCopy(p.weapons ?? [], w) }));
+  const copyBow = (b: Bow) => setCharacter(p => ({ ...p, bows: withCopy(p.bows ?? [], b) }));
+  const copyCrossbow = (x: Crossbow) => setCharacter(p => ({ ...p, crossbows: withCopy(p.crossbows ?? [], x) }));
+  // a copied gun comes with a full magazine of its own
+  const copyGun = (g: Firearm) => setCharacter(p => ({ ...p, firearms: withCopy(p.firearms ?? [], { ...g, rounds: undefined }) }));
+
   const swapAt = <T,>(arr: T[], i: number, j: number): T[] => {
     const next = [...arr]; [next[i], next[j]] = [next[j], next[i]]; return next;
   };
@@ -308,6 +325,7 @@ export default function WeaponsPanel() {
             <WeaponCard key={w.id} weapon={w}
               onEdit={() => { setEditingWeapon(w); setBuilderMode(w.swordProfKey ? 'sword' : 'weapon'); }}
               onDelete={() => deleteWeapon(w.id)}
+              onCopy={() => copyWeapon(w)}
               onMoveUp={idx > 0 ? () => moveWeapon(idx, -1) : undefined}
               onMoveDown={idx < weapons.length - 1 ? () => moveWeapon(idx, 1) : undefined}
             />
@@ -325,6 +343,7 @@ export default function WeaponsPanel() {
             <BowCard key={b.id} bow={b}
               onEdit={() => { setEditingBow(b); setBuilderMode('bow'); }}
               onDelete={() => deleteBow(b.id)}
+              onCopy={() => copyBow(b)}
               onMoveUp={idx > 0 ? () => moveBow(idx, -1) : undefined}
               onMoveDown={idx < bows.length - 1 ? () => moveBow(idx, 1) : undefined}
             />
@@ -342,6 +361,7 @@ export default function WeaponsPanel() {
             <CrossbowCard key={x.id} crossbow={x}
               onEdit={() => { setEditingCrossbow(x); setBuilderMode('crossbow'); }}
               onDelete={() => deleteCrossbow(x.id)}
+              onCopy={() => copyCrossbow(x)}
               onMoveUp={idx > 0 ? () => moveCrossbow(idx, -1) : undefined}
               onMoveDown={idx < crossbows.length - 1 ? () => moveCrossbow(idx, 1) : undefined}
             />
@@ -359,6 +379,7 @@ export default function WeaponsPanel() {
             <GunCard key={g.id} gun={g}
               onEdit={() => { setEditingGun(g); setBuilderMode('gun'); }}
               onDelete={() => deleteGun(g.id)}
+              onCopy={() => copyGun(g)}
               onMoveUp={idx > 0 ? () => moveGun(idx, -1) : undefined}
               onMoveDown={idx < firearms.length - 1 ? () => moveGun(idx, 1) : undefined}
             />
