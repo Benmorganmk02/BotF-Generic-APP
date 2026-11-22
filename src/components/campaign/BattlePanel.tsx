@@ -1,16 +1,14 @@
 import type { GetCampaignCharactersOutputType, MapPing } from '../../lib/api/social';
 import { useState } from 'react';
 import type { BattleState, BattleToken, Drawing, EffectKind, MapEffect } from '../../utils/battle';
-import { EFFECT_KINDS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, upsertEffect, removeEffect, clearEffects, addToken, removeToken, setHostile, setLabel, undoStroke, clearDrawings, defaultNpcBase, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
+import { DRAW_COLORS, EFFECT_KINDS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, upsertEffect, removeEffect, clearEffects, addToken, removeToken, setHostile, setLabel, undoStroke, clearDrawings, defaultNpcBase, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
 import BattleMap from './BattleMap';
 import type { MapTool } from './BattleMap';
 import { EFFECT_STYLES } from './EffectView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Crosshair, Eraser, Flame, Footprints, Minus, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
-
-const DRAW_COLORS = ['#ffffff', '#ef4444', '#facc15', '#22c55e', '#38bdf8'];
+import { Crosshair, Eraser, Flame, Footprints, Minus, Trash2, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
 
@@ -19,10 +17,11 @@ const isNpcChar = (c: CampaignChar) => c.characterType === 'gm' || c.isNpc;
 
 /** The battle map for a running combat. Everyone in the campaign sees the map and a player moves their own token; the
  * GM moves every token, adds characters to it, and sets whether each NPC is friendly or hostile. */
-export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke, onEffect }: {
+export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke, onEffect, onEdit }: {
   battle: BattleState; characters: CampaignChar[]; isGM: boolean; viewerId: string;
   onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void;
   pings: MapPing[]; onPing: (x: number, y: number) => void; onDrawStroke: (s: Drawing) => void; onEffect: (e: MapEffect) => void;
+  onEdit: (fn: (b: BattleState) => BattleState) => void;
 }) {
   const [tool, setTool] = useState<MapTool>('move');
   const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
@@ -60,6 +59,7 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
       <div className="flex items-center gap-1.5 flex-wrap">
         {toolButton('move', 'Move', MousePointer2)}
         {isGM && toolButton('draw', 'Draw', Pencil)}
+        {isGM && toolButton('erase', 'Erase', Eraser)}
         {isGM && toolButton('effect', 'Effect', Flame)}
         {toolButton('ping', 'Ping', Crosshair)}
         {isGM && tool === 'draw' && (
@@ -71,7 +71,7 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
               ))}
             </span>
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(undoStroke(battle))} disabled={!battle.drawings?.length}><Undo2 className="h-3 w-3" />Undo</Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(clearDrawings(battle))} disabled={!battle.drawings?.length}><Eraser className="h-3 w-3" />Clear drawings</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(clearDrawings(battle))} disabled={!battle.drawings?.length}><Trash2 className="h-3 w-3" />Clear all</Button>
           </>
         )}
         {isGM && tool === 'effect' && (
@@ -93,13 +93,15 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
         )}
         {tool === 'effect' && <span className="text-[11px] text-muted-foreground">Tap the map to put the effect down. Drag one to move it.</span>}
         {tool === 'ping' && <span className="text-[11px] text-muted-foreground">Tap the map to ping a spot. Everyone sees it for a few seconds.</span>}
+        {isGM && tool === 'erase' && <span className="text-[11px] text-muted-foreground">Drag across a line to erase just that line.</span>}
+        {isGM && tool === 'move' && ((battle.drawings?.length ?? 0) > 0 || (battle.effects?.length ?? 0) > 0) && <span className="text-[11px] text-muted-foreground">Right-click (or press and hold) a drawing or effect to edit or remove it.</span>}
         {tool === 'draw' && <span className="text-[11px] text-muted-foreground">Drag on the map to draw. Players see it live.</span>}
       </div>
 
       <BattleMap battle={battle} isGM={isGM} viewerId={viewerId}
         canMove={t => isGM || (t.kind === 'pc' && t.owner === viewerId)}
         onMove={onMoveToken} tool={tool} drawColor={drawColor} pings={pings} onPing={onPing} onStroke={onDrawStroke}
-        effectKind={fxKind} effectRadius={fxRadius} onEffect={onEffect} />
+        effectKind={fxKind} effectRadius={fxRadius} onEffect={onEffect} onEdit={onEdit} />
 
       {/* legend: the colours mean different things to the GM and to a player */}
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-muted-foreground">

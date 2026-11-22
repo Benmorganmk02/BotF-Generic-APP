@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import type { BattleState, BattleToken, Drawing, EffectKind, MapEffect } from '../../utils/battle';
 import EffectView from './EffectView';
-import { TOKEN_SIZE, WALK_SPEED, MAX_POINTS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, movementLeft, playerRole, tokenColor, tokenName } from '../../utils/battle';
+import MapMenu from './MapMenu';
+import type { MapMenuTarget } from './MapMenu';
+import { TOKEN_SIZE, WALK_SPEED, MAX_POINTS, MIN_EFFECT_RADIUS, MAX_EFFECT_RADIUS, movementLeft, playerRole, tokenColor, tokenName, strokeNear, effectAt, removeStroke } from '../../utils/battle';
 import type { MapPing } from '../../lib/api/social';
 
 /** What a click or drag on the map does: move tokens, draw or put down a magic effect (GM), or ping a spot for everyone. */
-export type MapTool = 'move' | 'draw' | 'ping' | 'effect';
+export type MapTool = 'move' | 'draw' | 'erase' | 'ping' | 'effect';
 
 // long names are cut short, but a trailing number ("Hooded Stranger 2") always stays
 const short = (name: string) => {
@@ -19,7 +21,7 @@ const strokePath = (pts: [number, number][]) => pts.map((p, i) => `${i ? 'L' : '
 
 /** The battle grid: 1 metre squares, characters as 2x2 tokens. The GM can drag every token, a player only their own.
  * With the Draw tool the GM draws on the map; with the Ping tool anyone drops a marker everyone sees for a moment. */
-export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, tool = 'move', drawColor = '#ffffff', pings = [], onPing, onStroke, effectKind = 'fire', effectRadius = 2, onEffect }: {
+export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, tool = 'move', drawColor = '#ffffff', pings = [], onPing, onStroke, effectKind = 'fire', effectRadius = 2, onEffect, onEdit }: {
   battle: BattleState; isGM: boolean; viewerId: string; canMove: (t: BattleToken) => boolean;
   /** Reports a new square; returns where the token really ended up (a player can be held to their movement). */
   onMove: (id: string, x: number, y: number) => { x: number; y: number } | void;
@@ -29,11 +31,16 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
   onStroke?: (stroke: Drawing) => void;
   /** The GM's Effect tool: the kind and radius a new effect gets, and a callback for placing or moving one. */
   effectKind?: EffectKind; effectRadius?: number; onEffect?: (e: MapEffect) => void;
+  /** The GM changes the map itself (erase a line, the right-click menu); gets the newest map to change. */
+  onEdit?: (fn: (b: BattleState) => BattleState) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [live, setLive] = useState<Drawing | null>(null);
   const [fxDrag, setFxDrag] = useState<{ id: string; x: number; y: number; radius: number } | null>(null);
+  const [menu, setMenu] = useState<MapMenuTarget | null>(null);
+  const latest = useRef(battle);
+  latest.current = battle;
   const { cols, rows } = battle;
 
   const toGrid = (clientX: number, clientY: number) => {
@@ -72,8 +79,34 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
 
   // Ping and Draw act on the map itself (a token under the pointer does not block them)
   const onMapDown = (e: React.PointerEvent) => {
-    if (tool === 'move') return;
+    if (tool === 'move') {
+      // on a touch screen, press and hold on a drawing or effect opens its menu (there is no right click)
+      if (isGM && onEdit && e.pointerType === 'touch' && !(e.target as Element).closest?.('[data-token]')) {
+        const { clientX, clientY } = e;
+        const cancel = () => { window.clearTimeout(timer); window.removeEventListener('pointerup', cancel); window.removeEventListener('pointermove', moved); };
+        const start = { x: clientX, y: clientY };
+        const moved = (ev: PointerEvent) => { if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 8) cancel(); };
+        const timer = window.setTimeout(() => { cancel(); openMenuAt(clientX, clientY); }, 550);
+        window.addEventListener('pointerup', cancel);
+        window.addEventListener('pointermove', moved);
+      }
+      return;
+    }
     e.preventDefault();
+    if (tool === 'erase') {
+      // drag across a line to erase just that line
+      if (!isGM || !onEdit) return;
+      const eraseAt = (cx: number, cy: number) => {
+        const id = strokeNear(latest.current.drawings, toGrid(cx, cy));
+        if (id) onEdit(b => removeStroke(b, id));
+      };
+      eraseAt(e.clientX, e.clientY);
+      const move = (ev: PointerEvent) => eraseAt(ev.clientX, ev.clientY);
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      return;
+    }
     const p = toGrid(e.clientX, e.clientY);
     if (tool === 'ping') { const [x, y] = inside(p); onPing?.(x, y); return; }
     if (tool === 'effect') {
@@ -148,12 +181,27 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
     window.addEventListener('pointerup', up);
   };
 
+  // Right click (or press and hold) on a drawing or an effect: edit or remove it
+  const openMenuAt = (cx: number, cy: number) => {
+    const p = toGrid(cx, cy);
+    const strokeId = strokeNear(latest.current.drawings, p);
+    if (strokeId) { setMenu({ cx, cy, kind: 'stroke', id: strokeId }); return; }
+    const fxId = effectAt(latest.current.effects, p);
+    if (fxId) setMenu({ cx, cy, kind: 'effect', id: fxId });
+  };
+  const onContextMenu = (e: React.MouseEvent) => {
+    if (!isGM || !onEdit) return;
+    e.preventDefault();
+    openMenuAt(e.clientX, e.clientY);
+  };
+
   const pingColor = (p: MapPing) => (p.gm ? '#fbbf24' : p.senderId === viewerId ? '#3b82f6' : isGM ? '#a855f7' : '#22c55e');
   const strokes = [...(battle.drawings ?? []).filter(d => d.id !== live?.id), ...(live ? [live] : [])];
 
   return (
+    <>
     <svg ref={svgRef} viewBox={`0 0 ${cols} ${rows}`} className="w-full h-auto block select-none touch-none rounded-lg border border-border" role="img" aria-label="Battle map"
-      style={{ cursor: tool === 'move' ? undefined : 'crosshair' }} onPointerDown={onMapDown}>
+      style={{ cursor: tool === 'move' ? undefined : 'crosshair' }} onPointerDown={onMapDown} onContextMenu={onContextMenu}>
       <rect x={0} y={0} width={cols} height={rows} fill="#0b0a14" />
       {Array.from({ length: cols + 1 }, (_, i) => <line key={`v${i}`} x1={i} y1={0} x2={i} y2={rows} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} strokeWidth={0.03} />)}
       {Array.from({ length: rows + 1 }, (_, i) => <line key={`h${i}`} x1={0} y1={i} x2={cols} y2={i} stroke="#ffffff" strokeOpacity={i % 5 === 0 ? 0.14 : 0.07} strokeWidth={0.03} />)}
@@ -210,5 +258,7 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
         );
       })}
     </svg>
+    {menu && onEdit && <MapMenu target={menu} battle={battle} onEdit={onEdit} onClose={() => setMenu(null)} />}
+    </>
   );
 }

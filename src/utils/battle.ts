@@ -34,6 +34,8 @@ export interface Drawing {
   points: [number, number][];
 }
 export const MAX_STROKES = 60;
+/** The colours the GM can draw in. */
+export const DRAW_COLORS = ['#ffffff', '#ef4444', '#facc15', '#22c55e', '#38bdf8'];
 
 /** The kinds of magic effect the GM can put down on the map (see EffectView for how each looks). */
 export const EFFECT_KINDS = ['fire', 'frost', 'lightning', 'poison', 'arcane', 'water', 'darkness'] as const;
@@ -209,6 +211,32 @@ export const upsertStroke = (b: BattleState, s: Drawing): BattleState => {
   return { ...b, drawings: next.slice(-MAX_STROKES) };
 };
 export const undoStroke = (b: BattleState): BattleState => ({ ...b, drawings: (b.drawings ?? []).slice(0, -1) });
+/** Takes away one drawing (the Erase tool and the right-click menu). */
+export const removeStroke = (b: BattleState, id: string): BattleState => ({ ...b, drawings: (b.drawings ?? []).filter(d => d.id !== id) });
+export const recolorStroke = (b: BattleState, id: string, color: string): BattleState => ({
+  ...b, drawings: (b.drawings ?? []).map(d => (d.id === id ? { ...d, color } : d)),
+});
+const distToSegment = (p: { x: number; y: number }, a: [number, number], b: [number, number]) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / len2));
+  return Math.hypot(p.x - (a[0] + t * dx), p.y - (a[1] + t * dy));
+};
+/** The drawing nearest to a point, if one passes within `reach` metres of it (the one drawn last wins). */
+export function strokeNear(drawings: Drawing[] | undefined, p: { x: number; y: number }, reach = 0.6): string | null {
+  const all = drawings ?? [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    const pts = all[i].points;
+    if (pts.length === 1 ? Math.hypot(p.x - pts[0][0], p.y - pts[0][1]) <= reach : pts.some((q, k) => k > 0 && distToSegment(p, pts[k - 1], q) <= reach)) return all[i].id;
+  }
+  return null;
+}
+/** The effect whose area contains a point (the smallest one if they overlap, so a small fire inside a big one can be picked). */
+export function effectAt(effects: MapEffect[] | undefined, p: { x: number; y: number }): string | null {
+  const hits = (effects ?? []).filter(e => Math.hypot(p.x - e.x, p.y - e.y) <= e.radius);
+  hits.sort((a, b) => a.radius - b.radius);
+  return hits[0]?.id ?? null;
+}
 export const clearDrawings = (b: BattleState): BattleState => ({ ...b, drawings: [] });
 /** GM: puts an effect on the map, or replaces the one with the same id (moving or resizing it). Whole or half metres, on the map. */
 export const upsertEffect = (b: BattleState, e: MapEffect): BattleState => {

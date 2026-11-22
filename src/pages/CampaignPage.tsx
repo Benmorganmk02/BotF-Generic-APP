@@ -741,6 +741,8 @@ export default function CampaignPage() {
   };
   // The GM's drawing: the stroke so far, sent on as it grows
   // The GM's magic effects (fire, ice...): placed or moved on the map, sent on as they change
+  // The GM edits the map itself (erase a drawing, the right-click menu): always on the newest map
+  const editMap = (fn: (b: BattleState) => BattleState) => { const cur = battleRef.current; if (cur) updateBattle(fn(cur)); };
   const placeEffect = (e: MapEffect) => { const cur = battleRef.current; if (cur) updateBattle(upsertEffect(cur, e)); };
   const drawStroke = (s: Drawing) => { const cur = battleRef.current; if (cur) updateBattle(upsertStroke(cur, s)); };
 
@@ -888,7 +890,7 @@ export default function CampaignPage() {
       {/* Roster */}
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         {battle?.active && (
-          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} pings={pings} onPing={sendPing} onDrawStroke={drawStroke} onEffect={placeEffect} />
+          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} pings={pings} onPing={sendPing} onDrawStroke={drawStroke} onEffect={placeEffect} onEdit={editMap} />
         )}
 
         {/* Player: the active character's health, stamina, mana, turns and attacks, without opening the sheet */}
