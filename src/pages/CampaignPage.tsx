@@ -15,6 +15,7 @@ import type { CharacterVisibility } from '../utils/visibility';
 import { getCharacters, saveCharacter } from '../lib/api/characters';
 import { saveLocalCharacter } from '../utils/storage';
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
+import { getWorld } from '../data/worlds';
 import NpcControl from '../components/campaign/NpcControl';
 import BattlePanel from '../components/campaign/BattlePanel';
 import { newBattle, addToken, moveToken, limitMove, resetMovement, mergeRemotePositions, upsertStroke, upsertEffect, WALK_SPEED } from '../utils/battle';
@@ -857,6 +858,7 @@ export default function CampaignPage() {
             {isGM && <Crown className="h-4 w-4 text-amber-400 shrink-0" />}
             <h1 className="text-lg font-bold text-foreground truncate">{data?.campaign.name}</h1>
             {isGM && <Badge className="text-xs bg-amber-500/20 text-amber-400 border-amber-500/40 border shrink-0">GM</Badge>}
+            {data?.campaign.world && <Badge variant="outline" className="text-xs shrink-0">{getWorld(data.campaign.world)?.name ?? data.campaign.world}</Badge>}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1037,7 +1039,7 @@ export default function CampaignPage() {
       {isGM && <DuplicateDialog char={dupTarget} onClose={() => setDupTarget(null)} onDone={load} />}
 
       {campaignId && (isGM || isInvitedMember) && (
-        <CreateCharacterDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreateMine} allowGM={isGM} npcOption={isGM} />
+        <CreateCharacterDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={handleCreateMine} allowGM={isGM} npcOption={isGM} defaultWorld={data?.campaign.world} />
       )}
 
       <AssignDialog

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,17 +15,20 @@ interface Props {
   allowGM?: boolean;
   /** Show a box to add the new character as an NPC in the campaign it is being created for. */
   npcOption?: boolean;
+  /** The world to start on (a campaign's type); the picker can still change it. */
+  defaultWorld?: string;
 }
 
 type Mode = 'archetype' | 'custom';
 const DEFAULT_WORLD = WORLDS[0].id;
 
-export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM = true, npcOption = false }: Props) {
+export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM = true, npcOption = false, defaultWorld }: Props) {
+  const startWorld = defaultWorld && getWorld(defaultWorld) ? defaultWorld : DEFAULT_WORLD;
   const [name, setName] = useState('');
   const [player, setPlayer] = useState('');
   const [type, setType] = useState<'normal' | 'gm'>('normal');
   const [npc, setNpc] = useState(false);
-  const [worldId, setWorldId] = useState(DEFAULT_WORLD);
+  const [worldId, setWorldId] = useState(startWorld);
   const [mode, setMode] = useState<Mode>('archetype');
   const [archetypeId, setArchetypeId] = useState('');
   const [raceId, setRaceId] = useState('');
@@ -46,9 +49,15 @@ export default function CreateCharacterDialog({ open, onClose, onCreate, allowGM
   const background = backgrounds.find(b => b.id === backgroundId);
 
   const reset = () => {
-    setName(''); setPlayer(''); setType('normal'); setNpc(false); setWorldId(DEFAULT_WORLD);
+    setName(''); setPlayer(''); setType('normal'); setNpc(false); setWorldId(startWorld);
     setMode('archetype'); setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource('');
   };
+  // opening the dialog starts on the campaign's world
+  useEffect(() => {
+    if (!open) return;
+    setWorldId(startWorld);
+    setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource('');
+  }, [open, startWorld]);
   const clearPicks = () => { setArchetypeId(''); setRaceId(''); setBackgroundId(''); setMagicSource(''); };
 
   const changeWorld = (id: string) => { setWorldId(id); clearPicks(); };

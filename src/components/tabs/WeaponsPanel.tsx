@@ -5,6 +5,7 @@ import WeaponBuilder from './WeaponBuilder';
 import SwordBuilder from './SwordBuilder';
 import SwordAttackRow from '../sheet/SwordAttackRow';
 import OpponentCounter from '../sheet/OpponentCounter';
+import DescriptionSection from '../sheet/DescriptionSection';
 import BowBuilder from './BowBuilder';
 import CrossbowBuilder from './CrossbowBuilder';
 import BowCard from './BowCard';
@@ -231,20 +232,20 @@ export default function WeaponsPanel() {
   const [editingGun, setEditingGun] = useState<Firearm | undefined>(undefined);
 
   const saveWeapon = (w: Weapon) => {
-    setCharacter(p => { const ws = p.weapons ?? []; const idx = ws.findIndex(x => x.id === w.id); return { ...p, weapons: idx >= 0 ? ws.map((x, i) => i === idx ? w : x) : [...ws, w] }; });
+    setCharacter(p => { const ws = p.weapons ?? []; const idx = ws.findIndex(x => x.id === w.id); return { ...p, weapons: idx >= 0 ? ws.map((x, i) => i === idx ? { ...w, description: x.description } : x) : [...ws, w] }; });
     setBuilderMode(null); setEditingWeapon(undefined);
   };
   const saveBow = (b: Bow) => {
-    setCharacter(p => { const bs = p.bows ?? []; const idx = bs.findIndex(x => x.id === b.id); return { ...p, bows: idx >= 0 ? bs.map((x, i) => i === idx ? b : x) : [...bs, b] }; });
+    setCharacter(p => { const bs = p.bows ?? []; const idx = bs.findIndex(x => x.id === b.id); return { ...p, bows: idx >= 0 ? bs.map((x, i) => i === idx ? { ...b, description: x.description } : x) : [...bs, b] }; });
     setBuilderMode(null); setEditingBow(undefined);
   };
   const saveCrossbow = (x: Crossbow) => {
-    setCharacter(p => { const xs = p.crossbows ?? []; const idx = xs.findIndex(c => c.id === x.id); return { ...p, crossbows: idx >= 0 ? xs.map((c, i) => i === idx ? x : c) : [...xs, x] }; });
+    setCharacter(p => { const xs = p.crossbows ?? []; const idx = xs.findIndex(c => c.id === x.id); return { ...p, crossbows: idx >= 0 ? xs.map((c, i) => i === idx ? { ...x, description: c.description } : c) : [...xs, x] }; });
     setBuilderMode(null); setEditingCrossbow(undefined);
   };
 
   const saveGun = (g: Firearm) => {
-    setCharacter(p => { const gs = p.firearms ?? []; const idx = gs.findIndex(x => x.id === g.id); return { ...p, firearms: idx >= 0 ? gs.map((x, i) => i === idx ? g : x) : [...gs, g] }; });
+    setCharacter(p => { const gs = p.firearms ?? []; const idx = gs.findIndex(x => x.id === g.id); return { ...p, firearms: idx >= 0 ? gs.map((x, i) => i === idx ? { ...g, description: x.description } : x) : [...gs, g] }; });
     setBuilderMode(null); setEditingGun(undefined);
   };
 
@@ -265,6 +266,10 @@ export default function WeaponsPanel() {
   const copyCrossbow = (x: Crossbow) => setCharacter(p => ({ ...p, crossbows: withCopy(p.crossbows ?? [], x) }));
   // a copied gun comes with a full magazine of its own
   const copyGun = (g: Firearm) => setCharacter(p => ({ ...p, firearms: withCopy(p.firearms ?? [], { ...g, rounds: undefined }) }));
+
+  // The description under each weapon: shown or hidden here, and shown in the Inventory too
+  const setDescription = (list: 'weapons' | 'bows' | 'crossbows' | 'firearms', id: string, description: string) =>
+    setCharacter(p => ({ ...p, [list]: ((p[list] ?? []) as { id: string }[]).map(w => (w.id === id ? { ...w, description } : w)) }));
 
   const swapAt = <T,>(arr: T[], i: number, j: number): T[] => {
     const next = [...arr]; [next[i], next[j]] = [next[j], next[i]]; return next;
@@ -322,13 +327,16 @@ export default function WeaponsPanel() {
       {!builderMode && weapons.length > 0 && (
         <div className="space-y-3">
           {weapons.map((w, idx) => (
-            <WeaponCard key={w.id} weapon={w}
+            <div key={w.id} className="space-y-1">
+            <WeaponCard weapon={w}
               onEdit={() => { setEditingWeapon(w); setBuilderMode(w.swordProfKey ? 'sword' : 'weapon'); }}
               onDelete={() => deleteWeapon(w.id)}
               onCopy={() => copyWeapon(w)}
               onMoveUp={idx > 0 ? () => moveWeapon(idx, -1) : undefined}
               onMoveDown={idx < weapons.length - 1 ? () => moveWeapon(idx, 1) : undefined}
             />
+            <DescriptionSection value={w.description ?? ''} onChange={d => setDescription('weapons', w.id, d)} className="px-1" />
+            </div>
           ))}
         </div>
       )}
@@ -340,13 +348,16 @@ export default function WeaponsPanel() {
             <div className="flex-1 h-px bg-border" />
           </div>
           {bows.map((b, idx) => (
-            <BowCard key={b.id} bow={b}
+            <div key={b.id} className="space-y-1">
+            <BowCard bow={b}
               onEdit={() => { setEditingBow(b); setBuilderMode('bow'); }}
               onDelete={() => deleteBow(b.id)}
               onCopy={() => copyBow(b)}
               onMoveUp={idx > 0 ? () => moveBow(idx, -1) : undefined}
               onMoveDown={idx < bows.length - 1 ? () => moveBow(idx, 1) : undefined}
             />
+            <DescriptionSection value={b.description ?? ''} onChange={d => setDescription('bows', b.id, d)} className="px-1" />
+            </div>
           ))}
         </div>
       )}
@@ -358,13 +369,16 @@ export default function WeaponsPanel() {
             <div className="flex-1 h-px bg-border" />
           </div>
           {crossbows.map((x, idx) => (
-            <CrossbowCard key={x.id} crossbow={x}
+            <div key={x.id} className="space-y-1">
+            <CrossbowCard crossbow={x}
               onEdit={() => { setEditingCrossbow(x); setBuilderMode('crossbow'); }}
               onDelete={() => deleteCrossbow(x.id)}
               onCopy={() => copyCrossbow(x)}
               onMoveUp={idx > 0 ? () => moveCrossbow(idx, -1) : undefined}
               onMoveDown={idx < crossbows.length - 1 ? () => moveCrossbow(idx, 1) : undefined}
             />
+            <DescriptionSection value={x.description ?? ''} onChange={d => setDescription('crossbows', x.id, d)} className="px-1" />
+            </div>
           ))}
         </div>
       )}
@@ -376,13 +390,16 @@ export default function WeaponsPanel() {
             <div className="flex-1 h-px bg-border" />
           </div>
           {firearms.map((g, idx) => (
-            <GunCard key={g.id} gun={g}
+            <div key={g.id} className="space-y-1">
+            <GunCard gun={g}
               onEdit={() => { setEditingGun(g); setBuilderMode('gun'); }}
               onDelete={() => deleteGun(g.id)}
               onCopy={() => copyGun(g)}
               onMoveUp={idx > 0 ? () => moveGun(idx, -1) : undefined}
               onMoveDown={idx < firearms.length - 1 ? () => moveGun(idx, 1) : undefined}
             />
+            <DescriptionSection value={g.description ?? ''} onChange={d => setDescription('firearms', g.id, d)} className="px-1" />
+            </div>
           ))}
         </div>
       )}

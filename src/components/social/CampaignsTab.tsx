@@ -4,6 +4,9 @@ import { getCampaigns, createCampaign, deleteCampaign } from '../../lib/api/soci
 import type { GetCampaignsOutputType } from '../../lib/api/social';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { WORLDS, getWorld } from '../../data/worlds';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
@@ -19,6 +22,7 @@ export default function CampaignsTab() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newWorld, setNewWorld] = useState(WORLDS[0].id);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
 
@@ -37,12 +41,12 @@ export default function CampaignsTab() {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      await createCampaign({ name: newName.trim() });
+      await createCampaign({ name: newName.trim(), world: newWorld });
       toast.success(`Campaign "${newName}" created!`);
-      setNewName('');
+      setNewName(''); setNewWorld(WORLDS[0].id);
       setCreateOpen(false);
       load();
-    } catch { toast.error('Failed to create campaign'); }
+    } catch (e) { toast.error(e instanceof Error && /campaign-world/.test(e.message) ? e.message : 'Failed to create campaign'); }
     finally { setCreating(false); }
   };
 
@@ -112,6 +116,16 @@ export default function CampaignsTab() {
           <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
           <Input placeholder="Campaign name..." value={newName} onChange={e => setNewName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} autoFocus />
+          <div className="space-y-1">
+            <Label>Campaign type</Label>
+            <Select value={newWorld} onValueChange={setNewWorld}>
+              <SelectTrigger aria-label="Campaign type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {WORLDS.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">The world the campaign is set in. New characters made in it start in that world.</p>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
@@ -152,6 +166,7 @@ function CampaignCard({ campaign, onOpen, onDelete }: { campaign: Campaign; onOp
           <div className="flex items-center gap-2">
             {campaign.isGM && <Crown className="h-3.5 w-3.5 text-amber-400" />}
             <h4 className="font-bold text-foreground">{campaign.name}</h4>
+            {campaign.world && <Badge variant="outline" className="text-[10px]">{getWorld(campaign.world)?.name ?? campaign.world}</Badge>}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {!campaign.isGM && campaign.gmEmail && <span>GM: {campaign.gmEmail}</span>}

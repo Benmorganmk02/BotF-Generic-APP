@@ -47,6 +47,8 @@ export type Database = {
           members: string[];
           /** The shared battle map state (see utils/battle.ts and supabase/campaign-battle.sql). */
           battle: unknown | null;
+          /** The campaign type: a world id from data/worlds.ts (see supabase/campaign-world.sql). */
+          world: string | null;
           created_at: string;
         };
         Insert: Partial<Database['public']['Tables']['campaigns']['Row']> & { campaign_name: string; gm: string };

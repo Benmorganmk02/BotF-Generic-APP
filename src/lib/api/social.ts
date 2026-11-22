@@ -174,7 +174,7 @@ export async function getFriendCharacters(input: { friendId: string }): Promise<
 // ---------------------------------------------------------------------------
 
 export interface GetCampaignsOutputType {
-  campaigns: { id: string; name: string; isGM: boolean; gmEmail?: string; characterCount: number }[];
+  campaigns: { id: string; name: string; world?: string; isGM: boolean; gmEmail?: string; characterCount: number }[];
 }
 
 export async function getCampaigns(): Promise<GetCampaignsOutputType> {
@@ -210,6 +210,7 @@ export async function getCampaigns(): Promise<GetCampaignsOutputType> {
   const gmResult = (gmCampaigns ?? []).map((c) => ({
     id: c.id,
     name: c.campaign_name ?? 'Unnamed',
+    world: c.world ?? undefined,
     isGM: true,
     characterCount: charCounts.get(c.id) ?? 0,
   }));
@@ -217,6 +218,7 @@ export async function getCampaigns(): Promise<GetCampaignsOutputType> {
   const playerResult = (playerCampaignRecords ?? []).map((c) => ({
     id: c.id,
     name: c.campaign_name ?? 'Unnamed',
+    world: c.world ?? undefined,
     isGM: false,
     gmEmail: gmProfiles.get(c.gm)?.email,
     characterCount: charCounts.get(c.id) ?? 0,
@@ -225,14 +227,17 @@ export async function getCampaigns(): Promise<GetCampaignsOutputType> {
   return { campaigns: [...gmResult, ...playerResult] };
 }
 
-export async function createCampaign(input: { name: string }): Promise<{ campaignId: string; name: string }> {
+export async function createCampaign(input: { name: string; world?: string }): Promise<{ campaignId: string; name: string }> {
   const user = await requireUser();
   const { data, error } = await supabase
     .from('campaigns')
-    .insert({ campaign_name: input.name, gm: user.id })
+    .insert({ campaign_name: input.name, gm: user.id, ...(input.world ? { world: input.world } : {}) })
     .select('*')
     .single();
-  if (error) throw error;
+  if (error) {
+    if (/world/i.test(error.message)) throw new Error('Run supabase/campaign-world.sql in the Supabase SQL editor first.');
+    throw error;
+  }
   return { campaignId: data.id, name: data.campaign_name };
 }
 
@@ -244,7 +249,7 @@ export async function deleteCampaign(input: { campaignId: string }): Promise<{ s
 }
 
 export interface GetCampaignCharactersOutputType {
-  campaign: { id: string; name: string; isGM: boolean; isInvitedMember: boolean; invitedMembers: { id: string; email: string }[] };
+  campaign: { id: string; name: string; world?: string; isGM: boolean; isInvitedMember: boolean; invitedMembers: { id: string; email: string }[] };
   characters: {
     id: string;
     name: string;
@@ -318,7 +323,7 @@ export async function getCampaignCharacters(input: { campaignId: string }): Prom
   });
 
   return {
-    campaign: { id: campaign.id, name: campaign.campaign_name ?? 'Unnamed', isGM, isInvitedMember: isMember, invitedMembers },
+    campaign: { id: campaign.id, name: campaign.campaign_name ?? 'Unnamed', world: campaign.world ?? undefined, isGM, isInvitedMember: isMember, invitedMembers },
     characters,
   };
 }

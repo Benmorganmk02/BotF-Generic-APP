@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Trash2, Plus, ChevronDown, ChevronRight,
+  Trash2, Plus, ChevronDown, ChevronRight, Pencil,
   CheckCircle2, Lock, Circle, Swords, Target, EyeOff, Shield, Flame, Leaf,
 } from 'lucide-react';
 import StatModifier from '../sheet/StatModifier';
@@ -95,14 +95,19 @@ function getHighestTakenInChain(chainTopId: string, takenIds: Set<string>): { ch
 }
 
 // ── Ability card in the main list ─────────────────────────────────────────────
-function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo }: {
+function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo, onSave }: {
   ability: AbilityEntry;
   treeName?: string;
   onRemove: () => void;
   removeBlocked: boolean;
   tierInfo?: { tier: number; total: number; lowerTiers: AbilityEntry[] };
+  /** Custom abilities only: save a new name and description (shows the edit button). */
+  onSave?: (name: string, description: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(ability.name);
+  const [draftDesc, setDraftDesc] = useState(ability.description);
   const { character: c, setCharacter } = useChar();
   const { reactionsLeft, spendReaction } = useCombat();
   const tree = ABILITY_TREES.find(t => t.id === ability.treeId);
@@ -117,6 +122,30 @@ function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo }: {
     setCharacter(p => ({ ...p, stamina: { ...p.stamina, current: p.stamina.current - u.sta } }));
     toast.success(`${ability.name}${u.label ? ` (${u.label})` : ''}`, { description: `${describeUse(u)} spent` });
   };
+
+  const startEdit = () => { setDraftName(ability.name); setDraftDesc(ability.description); setEditing(true); setOpen(true); };
+  const saveEdit = () => {
+    const n = draftName.trim();
+    if (!n) return;
+    onSave?.(n, draftDesc.trim());
+    setEditing(false);
+  };
+
+  // Editing a custom ability: change its name and description in place
+  if (editing && onSave) {
+    return (
+      <div className="rounded-lg border border-primary/40 bg-card px-3 py-2.5 space-y-2">
+        <Input value={draftName} onChange={e => setDraftName(e.target.value)} placeholder="Ability name" aria-label="Ability name" autoFocus
+          onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }} />
+        <Textarea value={draftDesc} onChange={e => setDraftDesc(e.target.value)} placeholder="What it does" aria-label="Ability description" rows={3}
+          onKeyDown={e => { if (e.key === 'Escape') setEditing(false); }} />
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)}>Cancel</Button>
+          <Button size="sm" className="h-7 text-xs" onClick={saveEdit} disabled={!draftName.trim()}>Save</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2">
@@ -139,6 +168,11 @@ function AbilityCard({ ability, treeName, onRemove, removeBlocked, tierInfo }: {
             <span className="text-xs text-muted-foreground shrink-0">· {treeAbility.cost}</span>
           )}
         </button>
+        {onSave && (
+          <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={startEdit} title="Edit this ability" aria-label={`Edit ${ability.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        )}
         <Button
           size="icon" variant="ghost"
           className="h-7 w-7 shrink-0"
@@ -412,6 +446,14 @@ export default function AbilitiesTab() {
     }));
   };
 
+  // Rename or re-describe a custom ability after it was given (by its place in the list, so older saved abilities work too)
+  const updateAbility = (index: number, name: string, description: string) => {
+    setCharacter(p => ({
+      ...p,
+      abilities: p.abilities.map((a, i) => (i === index ? { ...normalizeAbility(a), name, description } : a)),
+    }));
+  };
+
   const setMod = (v: number) => setCharacter(p => ({ ...p, modifiers: { ...p.modifiers, abilities: v } }));
 
   return (
@@ -481,6 +523,7 @@ export default function AbilitiesTab() {
                   onRemove={() => removeAbility(ability.id)}
                   removeBlocked={isRemoveBlocked(ability)}
                   tierInfo={tierInfoMap.get(ability.id)}
+                  onSave={ability.treeId || ability.treeAbilityId ? undefined : (name, desc) => updateAbility(abilities.indexOf(ability), name, desc)}
                 />
               ));
           })()}

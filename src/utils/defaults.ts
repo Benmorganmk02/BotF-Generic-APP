@@ -1,6 +1,6 @@
 import {
   Character, AttributeKey, SkillKey, ArmorLayer, ArmorSlot, ArmorPiece, ARMOR_LAYERS, ARMOR_SLOTS, emptyArmorPiece,
-  InjuryLocation, InjuryLevel, INJURY_LOCATIONS, Proficiency, MagicSource,
+  InjuryLocation, InjuryLevel, INJURY_LOCATIONS, Proficiency, MagicSource, MoneyTracker,
 } from '../types/character';
 import { getHPMax } from './mechanics';
 import { applyMagicSource } from './magic';
@@ -21,6 +21,9 @@ const defaultArmor = Object.fromEntries(
 const defaultInjuries = Object.fromEntries(INJURY_LOCATIONS.map(loc => [loc, [] as Exclude<InjuryLevel, 'none'>[]])) as Record<InjuryLocation, Exclude<InjuryLevel, 'none'>[]>;
 const defaultLoadout = { mainHand: '', offhand: '', back1: '', back2: '', back3: '', hips4: '', hips5: '' };
 
+/** An empty money tracker (what a Malconia character starts with). */
+export const newMoney = (): MoneyTracker => ({ amount: 0, log: [] });
+
 export function createDefaultCharacter(
   type: 'normal' | 'gm',
   name = 'New Character', player = '',
@@ -28,7 +31,7 @@ export function createDefaultCharacter(
 ): Character {
   const profs: Proficiency[] = [];
 
-  return applyMagicSource({
+  const base = applyMagicSource({
     id: genId(), name, player, level: 0, race: origin.race ?? '', bodyType: '', age: '',
     world: origin.world, archetype: origin.archetype, background: origin.background,
     disablingCharacteristics: '', inherentCharacteristics: '',
@@ -47,4 +50,5 @@ export function createDefaultCharacter(
     inventory: [], weapons: [], bows: [], crossbows: [], firearms: [], notes: '', freePicksUsed: 0,
     gmModeIncreases: { attributes: {}, skills: {}, proficiencies: {} },
   }, origin.magicSource);
+  return origin.world === 'malconia' ? { ...base, money: newMoney() } : base;
 }

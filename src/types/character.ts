@@ -113,12 +113,19 @@ export type InjuryLevel = 'none' | 'fleshWound' | 'minor' | 'maiming' | 'dismemb
 export interface LoadoutSet {
   mainHand: string; offhand: string; back1: string; back2: string; back3: string; hips4: string; hips5: string;
 }
-export interface InventoryItem { id: string; name: string; quantity: number; weight: number; }
+/** A money tracker: the balance and the last changes made to it. `amount` and every `delta` are whole Copper Krönur (see utils/money.ts). */
+/** `delta` is in the unit of its purse: Copper Krönur, Algeir or Skøl (`currency`, Krönur when missing). */
+export interface MoneyEntry { id: string; delta: number; note: string; at: string; currency?: 'kronur' | 'algeir' | 'skol' }
+export interface MoneyTracker { amount: number; /** Algeir held (two decimals). */ algeir?: number; /** Skøl held (two decimals). */ skol?: number; log: MoneyEntry[] }
+
+export interface InventoryItem { id: string; name: string; quantity: number; weight: number; description?: string; }
 
 export interface WeaponHead { category: string; subType: string; }
 export interface Weapon {
   id: string;
   name: string;
+  /** Free text about the weapon, shown (or hidden) in the Weapons tab and shown in the inventory. */
+  description?: string;
   classification: 'simple' | 'martial';
   handleType: 'polearm' | 'standard' | 'sword';
   handleSize: string;
@@ -153,6 +160,7 @@ export type CrossbowDrawWeight = 'hand' | 'hunting' | 'war' | 'siege' | 'arbales
 export interface Bow {
   id: string;
   name: string;
+  description?: string;
   style: BowStyle;
   drawWeight: BowDrawWeight;
   linkedProficiencyId?: string;
@@ -161,6 +169,7 @@ export interface Bow {
 export interface Crossbow {
   id: string;
   name: string;
+  description?: string;
   drawWeight: CrossbowDrawWeight;
   linkedProficiencyId?: string;
 }
@@ -169,6 +178,7 @@ export interface Crossbow {
 export interface Firearm {
   id: string;
   name: string;
+  description?: string;
   /** Receiver class id (see GUN_RECEIVERS). */
   receiver: string;
   /** Chambered cartridge id (see AMMO). */
@@ -216,6 +226,8 @@ export interface Character {
   turnStats?: { total: number; session: number };
   /** Ammo in the inventory, rounds per cartridge:round type key (see ammoKey in gunData.ts). Reload on a gun draws from it. */
   ammoStock?: Record<string, number>;
+  /** Money carried: Krönur, Algeir and Skøl (any character; created the first time it is used). */
+  money?: MoneyTracker;
   bonusPoints: { attribute: number; skill: number; ability: number; proficiency: number };
   modifiers: { attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>; abilities: number };
   attributes: Record<AttributeKey, number>; skills: Record<SkillKey, number>;

@@ -246,3 +246,8 @@ revoke all on function public.reset_battle_movement(uuid, text) from public;
 revoke all on function public.reset_battle_movement(uuid, text) from anon;
 grant execute on function public.reset_battle_movement(uuid, text) to authenticated;
 
+-- 11. CAMPAIGN TYPE (WORLD) -----------------------------------------------------
+-- The campaign type (its world: Aetherastra, Malconia...), picked by the GM when the campaign is made. Run this once in
+-- the Supabase SQL editor (it is safe to run again). The existing policies already cover it.
+alter table public.campaigns
+  add column if not exists world text;
