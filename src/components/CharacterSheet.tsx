@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { Character } from '../types/character';
 import { CharacterProvider } from '../context/CharacterContext';
+import { CampaignWorldContext } from '../context/CampaignWorldContext';
 import { DiceRollProvider } from '../context/DiceRollContext';
 import { CombatProvider } from '../context/CombatContext';
 import { saveLocalCharacter } from '../utils/storage';
@@ -37,6 +38,8 @@ interface Props {
   campaignMode?: boolean;
   /** Someone else's character shown to you: nothing on the sheet changes and there is no Save. */
   readOnly?: boolean;
+  /** The type (world) of the campaign this sheet is opened from. */
+  campaignWorld?: string;
 }
 
 const TYPE_LABELS: Record<string, string> = { normal: 'Normal', gm: 'GM/NPC' };
@@ -56,7 +59,7 @@ const AUTOSAVE_DELAY_MS = 2500;
 const AUTOSAVE_RETRY_MS = 20000;
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error';
 
-export default function CharacterSheet({ initialCharacter, onSave, onHome, campaignMode, readOnly, syncTargets, syncKey }: Props) {
+export default function CharacterSheet({ initialCharacter, onSave, onHome, campaignMode, readOnly, syncTargets, syncKey, campaignWorld }: Props) {
   const [character, setCharacterState] = useState<Character>(initialCharacter);
   const [saving, setSaving] = useState(false);
   // Unticked sheets are remembered, so new sheets start ticked
@@ -174,6 +177,7 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
     : saveStatus === 'error' ? 'Auto-save failed, retrying' : 'All changes saved';
 
   return (
+    <CampaignWorldContext.Provider value={campaignWorld}>
     <CharacterProvider character={character} setCharacter={setCharacter}>
       <DiceRollProvider>
        <CombatProvider>
@@ -260,5 +264,6 @@ export default function CharacterSheet({ initialCharacter, onSave, onHome, campa
        </CombatProvider>
       </DiceRollProvider>
     </CharacterProvider>
+    </CampaignWorldContext.Provider>
   );
 }

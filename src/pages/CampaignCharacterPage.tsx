@@ -15,6 +15,7 @@ export default function CampaignCharacterPage() {
   const { user } = useAuth();
   const [character, setCharacter] = useState<Character | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [campaignWorld, setCampaignWorld] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   // The main character and the other campaign copies a save can also update
   const [targets, setTargets] = useState<SyncTarget[]>([]);
@@ -31,6 +32,7 @@ export default function CampaignCharacterPage() {
           // Use the campaign character id as the "cloudId" so saves go back correctly
           setCharacter({ ...parsed, weapons: parsed.weapons ?? [], bows: parsed.bows ?? [], crossbows: parsed.crossbows ?? [], firearms: parsed.firearms ?? [], berzerkActive: parsed.berzerkActive ?? false, berzerkRound: parsed.berzerkRound ?? 0, cloudId: cc.id });
           setCanEdit(cc.canEdit);
+          setCampaignWorld(r.campaign.world);
         } catch {
           toast.error('Failed to parse character data.');
           navigate(`/campaign/${campaignId}`);
@@ -117,6 +119,7 @@ export default function CampaignCharacterPage() {
       campaignMode
       syncTargets={targets}
       syncKey={`copy:${characterId}`}
+      campaignWorld={campaignWorld}
     />
   );
 }

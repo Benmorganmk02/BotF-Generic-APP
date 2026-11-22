@@ -115,8 +115,13 @@ export interface LoadoutSet {
 }
 /** A money tracker: the balance and the last changes made to it. `amount` and every `delta` are whole Copper Krönur (see utils/money.ts). */
 /** `delta` is in the unit of its purse: Copper Krönur, Algeir or Skøl (`currency`, Krönur when missing). */
-export interface MoneyEntry { id: string; delta: number; note: string; at: string; currency?: 'kronur' | 'algeir' | 'skol' }
-export interface MoneyTracker { amount: number; /** Algeir held (two decimals). */ algeir?: number; /** Skøl held (two decimals). */ skol?: number; log: MoneyEntry[] }
+export interface MoneyEntry { id: string; delta: number; note: string; at: string; currency?: 'kronur' | 'algeir' | 'skol' | 'coin' }
+export interface MoneyTracker {
+  /** Which currency this character carries: Malconia's (Krönur, Algeir, Skøl) or one currency named by hand. Missing: Malconia characters carry Malconia's, everyone else the simple one. */
+  system?: 'malconia' | 'simple';
+  /** The simple currency: its name and the amount held. */
+  coin?: { name: string; amount: number };
+  amount: number; /** Algeir held (two decimals). */ algeir?: number; /** Skøl held (two decimals). */ skol?: number; log: MoneyEntry[] }
 
 export interface InventoryItem { id: string; name: string; quantity: number; weight: number; description?: string; }
 
