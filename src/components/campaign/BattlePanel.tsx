@@ -8,7 +8,7 @@ import { EFFECT_STYLES } from './EffectView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Crosshair, Eraser, Flame, Footprints, Minus, Trash2, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
+import { Crosshair, Eraser, LogOut, Flame, Footprints, Minus, Trash2, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
 
@@ -17,9 +17,9 @@ const isNpcChar = (c: CampaignChar) => c.characterType === 'gm' || c.isNpc;
 
 /** The battle map for a running combat. Everyone in the campaign sees the map and a player moves their own token; the
  * GM moves every token, adds characters to it, and sets whether each NPC is friendly or hostile. */
-export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke, onEffect, onEdit }: {
+export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, onExit, pings, onPing, onDrawStroke, onEffect, onEdit }: {
   battle: BattleState; characters: CampaignChar[]; isGM: boolean; viewerId: string;
-  onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void;
+  onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void; onExit: () => void;
   pings: MapPing[]; onPing: (x: number, y: number) => void; onDrawStroke: (s: Drawing) => void; onEffect: (e: MapEffect) => void;
   onEdit: (fn: (b: BattleState) => BattleState) => void;
 }) {
@@ -42,15 +42,16 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Swords className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Combat</h2>
+          <h2 className="text-sm font-semibold text-foreground">{battle.combat === false ? 'Map' : 'Combat'}</h2>
           <Badge variant="outline" className="text-[10px]">1 square = 1 m · {battle.cols} × {battle.rows} m</Badge>
         </div>
         {isGM && (
           <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(resetMovement(battle))} title={`Everyone gets their ${WALK_SPEED} m of walking back`}><Footprints className="h-3 w-3" />New round</Button>
+            {battle.combat !== false && <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(resetMovement(battle))} title={`Everyone gets their ${WALK_SPEED} m of walking back`}><Footprints className="h-3 w-3" />New round</Button>}
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => resize(smaller)} disabled={!smaller} title="Make the map smaller"><Minimize2 className="h-3 w-3" />Smaller map</Button>
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => resize(bigger)} disabled={!bigger} title="Make the map bigger"><Maximize2 className="h-3 w-3" />Bigger map</Button>
-            <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={onEnd}>End combat</Button>
+            {battle.combat !== false && <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={onEnd} title="Combat ends; the map stays open">End combat</Button>}
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onExit} title="Close the map for everyone (it is kept for next time)"><LogOut className="h-3 w-3" />Exit map</Button>
           </div>
         )}
       </div>
@@ -116,7 +117,7 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.self} />You</span>
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.ally} />Allies</span>
             <span className="flex items-center gap-1.5"><Dot color={PLAYER_COLORS.enemy} />Enemies</span>
-            <span className="text-[11px]">Drag your own token to move it: {WALK_SPEED} m of walking per turn. The map updates live for everyone.</span>
+            <span className="text-[11px]">{battle.combat !== false ? `Drag your own token to move it: ${WALK_SPEED} m of walking per turn. The map updates live for everyone.` : 'Drag your own token to move it. The map updates live for everyone.'}</span>
           </>
         )}
       </div>

@@ -48,11 +48,13 @@ export const MAX_EFFECT_RADIUS = 30;
 export const MAX_POINTS = 400;
 
 export interface BattleState {
+  /** True while a combat is running. The map can stay open after it ends (active stays true); the walking speed only applies during combat. Missing on old saves: treated as running when the map is open. */
+  combat?: boolean;
   /** The GM's drawings on the map. */
   drawings?: Drawing[];
   /** Magic effects the GM put down (fire, ice...). */
   effects?: MapEffect[];
-  /** True while the GM has combat running; the map shows for everyone then. */
+  /** True while the GM has the map open; it shows for everyone then, and characters can move on it. */
   active: boolean;
   cols: number;
   rows: number;
@@ -60,7 +62,7 @@ export interface BattleState {
   startedAt?: string;
 }
 
-export const newBattle = (): BattleState => ({ active: true, cols: BATTLE_COLS, rows: BATTLE_ROWS, tokens: [], startedAt: new Date().toISOString() });
+export const newBattle = (combat = true): BattleState => ({ active: true, combat, cols: BATTLE_COLS, rows: BATTLE_ROWS, tokens: [], startedAt: new Date().toISOString() });
 
 const clampN = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 function parseEffects(raw: unknown): MapEffect[] | undefined {
@@ -93,7 +95,7 @@ export function parseBattle(raw: unknown): BattleState | null {
     !!t && typeof t.id === 'string' && typeof t.name === 'string' && (t.kind === 'pc' || t.kind === 'npc') && typeof t.x === 'number' && typeof t.y === 'number');
   let top = Math.max(0, ...tokens.filter(t => t.kind === 'npc').map(t => t.num ?? 0));
   const numbered = tokens.map(t => (t.kind === 'npc' && !t.num ? { ...t, num: ++top } : t));
-  return { active: b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens: numbered, startedAt: b.startedAt, drawings: parseDrawings((b as { drawings?: unknown }).drawings), effects: parseEffects((b as { effects?: unknown }).effects) };
+  return { active: b.active, combat: typeof b.combat === 'boolean' ? b.combat : b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens: numbered, startedAt: b.startedAt, drawings: parseDrawings((b as { drawings?: unknown }).drawings), effects: parseEffects((b as { effects?: unknown }).effects) };
 }
 
 /** How a player sees a token: their own character, an ally (other players and friendly NPCs) or an enemy. */
@@ -157,7 +159,8 @@ export const moveToken = (b: BattleState, id: string, x: number, y: number): Bat
   tokens: b.tokens.map(t => {
     if (t.id !== id) return t;
     const to = { x: clamp(Math.round(x), 0, b.cols - TOKEN_SIZE), y: clamp(Math.round(y), 0, b.rows - TOKEN_SIZE) };
-    return { ...t, ...to, moved: (t.moved ?? 0) + stepCost(t, to) };
+    // the 10 m a turn is only counted while combat is running
+    return { ...t, ...to, moved: b.combat === false ? t.moved : (t.moved ?? 0) + stepCost(t, to) };
   }),
 });
 
@@ -168,6 +171,7 @@ export function limitMove(b: BattleState, id: string, x: number, y: number): { x
   const to = { x: clamp(Math.round(x), 0, b.cols - TOKEN_SIZE), y: clamp(Math.round(y), 0, b.rows - TOKEN_SIZE) };
   if (!t) return { ...to, cost: 0, limited: false };
   const cost = stepCost(t, to), left = movementLeft(t);
+  if (b.combat === false) return { ...to, cost, limited: false }; // no combat: walk as far as you like
   if (cost <= left) return { ...to, cost, limited: false };
   const f = left / cost;
   const stop = { x: t.x + Math.trunc((to.x - t.x) * f), y: t.y + Math.trunc((to.y - t.y) * f) };

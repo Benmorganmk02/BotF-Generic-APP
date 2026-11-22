@@ -219,7 +219,7 @@ export default function BattleMap({ battle, isGM, viewerId, canMove, onMove, too
         const shown = tokenName(t, viewerId, isGM);
         const named = true;
         // movement left this turn: a player sees their own, the GM sees it once a token has moved
-        const showMove = isGM ? (t.moved ?? 0) > 0 : t.kind === 'pc' && playerRole(t, viewerId) === 'self';
+        const showMove = battle.combat === false ? false : isGM ? (t.moved ?? 0) > 0 : t.kind === 'pc' && playerRole(t, viewerId) === 'self';
         const left = movementLeft(t);
         return (
           <g key={t.id} data-token={t.id} data-color={color} transform={`translate(${x} ${y})`} onPointerDown={e => startDrag(e, t)}

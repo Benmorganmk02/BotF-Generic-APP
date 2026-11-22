@@ -34,7 +34,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Swords, Copy, ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail } from 'lucide-react';
+import { Swords, Copy, ArrowLeft, Crown, UserPlus, Sword, Trash2, Edit, Eye, Plus, UserCheck, Mail, Map as MapIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
@@ -780,17 +780,33 @@ export default function CampaignPage() {
     return t ? { x: t.x, y: t.y } : undefined;
   };
 
-  const toggleCombat = () => {
-    if (battle?.active) { updateBattle({ ...battle, active: false }); toast.info('Combat ended. The map is hidden; the tokens are kept for next time.'); return; }
-    // Start: keep the tokens from the last combat, or begin with every player's character
-    let next: BattleState = battle ? { ...battle, active: true } : newBattle();
+  // The map and the combat are separate: the GM opens the map (everyone sees it and moves freely), starts a combat on it
+  // (the 10 m walking speed applies), ends the combat (the map stays open), and exits the map to close it for everyone.
+  const openedBattle = (combat: boolean): BattleState => {
+    // keep the tokens from last time, or begin with every player's character
+    let next: BattleState = battle ? { ...battle, active: true, combat } : newBattle(combat);
     if (!battle) {
       for (const c of data?.characters ?? []) {
         if (c.characterType !== 'gm' && !c.isNpc && !c.isUnassigned) next = addToken(next, { id: c.id, name: c.name, kind: 'pc', owner: c.playerId || undefined });
       }
     }
-    updateBattle(next);
+    return next;
+  };
+  const openMap = () => { updateBattle(openedBattle(false)); toast.success('Map opened. Add NPCs from the Map panel.'); };
+  const startCombat = () => {
+    const next = openedBattle(true);
+    updateBattle(resetMovement(next)); // a fresh 10 m for everyone
     toast.success('Combat started. Add NPCs to the map from the Combat panel.');
+  };
+  const endCombat = () => {
+    if (!battle) return;
+    updateBattle(resetMovement({ ...battle, combat: false }));
+    toast.info('Combat ended. The map stays open; use Exit map to close it.');
+  };
+  const exitMap = () => {
+    if (!battle) return;
+    updateBattle({ ...battle, active: false, combat: false });
+    toast.info('Map closed. The tokens and drawings are kept for next time.');
   };
 
   const handleNpc = async (char: CampaignChar, isNpc: boolean) => {
@@ -846,9 +862,14 @@ export default function CampaignPage() {
         <div className="flex items-center gap-2 shrink-0">
           {isGM && (
             <>
-              <Button size="sm" variant={battle?.active ? 'destructive' : 'default'} onClick={toggleCombat}>
-                <Swords className="h-4 w-4 mr-1" />{battle?.active ? 'End Combat' : 'Start Combat'}
-              </Button>
+              {!battle?.active && (
+                <Button size="sm" variant="outline" onClick={openMap}><MapIcon className="h-4 w-4 mr-1" />Open Map</Button>
+              )}
+              {battle?.active && battle.combat !== false ? (
+                <Button size="sm" variant="destructive" onClick={endCombat}><Swords className="h-4 w-4 mr-1" />End Combat</Button>
+              ) : (
+                <Button size="sm" onClick={startCombat}><Swords className="h-4 w-4 mr-1" />Start Combat</Button>
+              )}
               <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
                 <Mail className="h-4 w-4 mr-1" />Invite Player
               </Button>
@@ -890,7 +911,7 @@ export default function CampaignPage() {
       {/* Roster */}
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         {battle?.active && (
-          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} pings={pings} onPing={sendPing} onDrawStroke={drawStroke} onEffect={placeEffect} onEdit={editMap} />
+          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={endCombat} onExit={exitMap} pings={pings} onPing={sendPing} onDrawStroke={drawStroke} onEffect={placeEffect} onEdit={editMap} />
         )}
 
         {/* Player: the active character's health, stamina, mana, turns and attacks, without opening the sheet */}

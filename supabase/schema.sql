@@ -340,6 +340,8 @@ declare
   v_x int;
   v_y int;
   v_moved int;
+  v_cost int;
+  v_combat boolean;
 begin
   if uid is null then
     raise exception 'You are not signed in.';
@@ -353,7 +355,7 @@ begin
 
   select c.battle into b from public.campaigns c where c.id = p_campaign for update;
   if b is null or coalesce((b ->> 'active')::boolean, false) is not true then
-    raise exception 'There is no combat running.';
+    raise exception 'The map is not open.';
   end if;
   select t into tok from jsonb_array_elements(b -> 'tokens') t where t ->> 'id' = p_token and t ->> 'kind' = 'pc' limit 1;
   if tok is null then
@@ -365,11 +367,16 @@ begin
   v_x := greatest(0, least(v_cols - 2, p_x));
   v_y := greatest(0, least(v_rows - 2, p_y));
 
-  -- A character walks 10 m per turn. The cost is the metres walked (at least the straight-line distance).
-  v_moved := coalesce((tok ->> 'moved')::int, 0)
-    + greatest(coalesce(p_cost, 0), abs(v_x - (tok ->> 'x')::int), abs(v_y - (tok ->> 'y')::int));
-  if v_moved > 10 then
-    raise exception 'You have no movement left this turn (10 m per turn).';
+  -- While combat is running a character walks 10 m per turn (the cost is the metres walked, at least the straight-line
+  -- distance). With the map open and no combat, movement is free.
+  v_combat := coalesce((b ->> 'combat')::boolean, true);
+  v_moved := coalesce((tok ->> 'moved')::int, 0);
+  if v_combat then
+    v_cost := greatest(coalesce(p_cost, 0), abs(v_x - (tok ->> 'x')::int), abs(v_y - (tok ->> 'y')::int));
+    v_moved := v_moved + v_cost;
+    if v_moved > 10 then
+      raise exception 'You have no movement left this turn (10 m per turn).';
+    end if;
   end if;
 
   update public.campaigns
