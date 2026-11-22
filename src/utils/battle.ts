@@ -16,6 +16,10 @@ export interface BattleToken {
   owner?: string;
   /** For an NPC: hostile to the players (an enemy) or friendly (an ally). */
   hostile?: boolean;
+  /** For an NPC: its number on this map. Players see an NPC as a name plus this number (Enemy 3, Wolf 2). */
+  num?: number;
+  /** For an NPC: the name the GM chose to show players instead of "Enemy" / "Ally" (the real name stays GM-only). */
+  label?: string;
   /** Top-left square. */
   x: number;
   y: number;
@@ -23,7 +27,18 @@ export interface BattleToken {
   moved?: number;
 }
 
+/** A freehand line the GM drew on the map (grid coordinates, in metres). */
+export interface Drawing {
+  id: string;
+  color: string;
+  points: [number, number][];
+}
+export const MAX_STROKES = 60;
+export const MAX_POINTS = 400;
+
 export interface BattleState {
+  /** The GM's drawings on the map. */
+  drawings?: Drawing[];
   /** True while the GM has combat running; the map shows for everyone then. */
   active: boolean;
   cols: number;
@@ -34,6 +49,17 @@ export interface BattleState {
 
 export const newBattle = (): BattleState => ({ active: true, cols: BATTLE_COLS, rows: BATTLE_ROWS, tokens: [], startedAt: new Date().toISOString() });
 
+function parseDrawings(raw: unknown): Drawing[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Drawing[] = [];
+  for (const d of raw) {
+    if (!d || typeof d.id !== 'string' || typeof d.color !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(d.color) || !Array.isArray(d.points)) continue;
+    const points = d.points.filter((p: unknown): p is [number, number] => Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number').slice(0, MAX_POINTS);
+    if (points.length) out.push({ id: d.id, color: d.color, points });
+  }
+  return out.slice(-MAX_STROKES);
+}
+
 /** Reads the stored battle JSON, ignoring anything that is not a battle. */
 export function parseBattle(raw: unknown): BattleState | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -41,7 +67,9 @@ export function parseBattle(raw: unknown): BattleState | null {
   if (typeof b.active !== 'boolean' || !Array.isArray(b.tokens)) return null;
   const tokens = b.tokens.filter((t): t is BattleToken =>
     !!t && typeof t.id === 'string' && typeof t.name === 'string' && (t.kind === 'pc' || t.kind === 'npc') && typeof t.x === 'number' && typeof t.y === 'number');
-  return { active: b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens, startedAt: b.startedAt };
+  let top = Math.max(0, ...tokens.filter(t => t.kind === 'npc').map(t => t.num ?? 0));
+  const numbered = tokens.map(t => (t.kind === 'npc' && !t.num ? { ...t, num: ++top } : t));
+  return { active: b.active, cols: typeof b.cols === 'number' ? b.cols : BATTLE_COLS, rows: typeof b.rows === 'number' ? b.rows : BATTLE_ROWS, tokens: numbered, startedAt: b.startedAt, drawings: parseDrawings((b as { drawings?: unknown }).drawings) };
 }
 
 /** How a player sees a token: their own character, an ally (other players and friendly NPCs) or an enemy. */
@@ -61,8 +89,15 @@ export function tokenColor(t: BattleToken, viewerId: string, isGM: boolean): str
   return PLAYER_COLORS[playerRole(t, viewerId)];
 }
 
-/** The GM sees every name; a player sees their own and their allies' names but an enemy is just a red marker. */
-export const showTokenName = (t: BattleToken, viewerId: string, isGM: boolean): boolean => isGM || playerRole(t, viewerId) !== 'enemy';
+/** The name written on a token. The GM sees real names. A player sees the names of the player characters, and an NPC
+ * as a name plus its number: "Enemy 3" or "Ally 2", or the name the GM chose for it ("Wolf 2"); never the real name. */
+export function tokenName(t: BattleToken, _viewerId: string, isGM: boolean): string {
+  if (isGM || t.kind === 'pc') return t.name;
+  const base = t.label?.trim() || (t.hostile ? 'Enemy' : 'Ally');
+  return t.num ? `${base} ${t.num}` : base;
+}
+/** What players see on an NPC token when the GM has chosen no name: Enemy or Ally. */
+export const defaultNpcBase = (t: BattleToken) => (t.hostile ? 'Enemy' : 'Ally');
 
 /** How far a character can walk in one combat turn, in metres (squares). */
 export const WALK_SPEED = 10;
@@ -88,7 +123,8 @@ export function freeSpot(b: BattleState, side: 'left' | 'right'): { x: number; y
 export function addToken(b: BattleState, t: Omit<BattleToken, 'x' | 'y'>): BattleState {
   if (b.tokens.some(x => x.id === t.id)) return b;
   const spot = freeSpot(b, t.kind === 'pc' ? 'left' : 'right');
-  return { ...b, tokens: [...b.tokens, { ...t, ...spot }] };
+  const num = t.kind === 'npc' ? Math.max(0, ...b.tokens.map(k => k.num ?? 0)) + 1 : undefined;
+  return { ...b, tokens: [...b.tokens, { ...t, ...spot, ...(num ? { num } : {}) }] };
 }
 
 /** Moves a token (onto the grid, whole squares) and counts the squares walked against its turn's movement. */
@@ -140,4 +176,16 @@ export const resizeBattle = (b: BattleState, cols: number, rows: number): Battle
   tokens: b.tokens.map(t => ({ ...t, x: clamp(t.x, 0, cols - TOKEN_SIZE), y: clamp(t.y, 0, rows - TOKEN_SIZE) })),
 });
 export const removeToken = (b: BattleState, id: string): BattleState => ({ ...b, tokens: b.tokens.filter(t => t.id !== id) });
+/** GM: the name players see on an NPC's token, in front of its number ('' goes back to Enemy / Ally). */
+export const setLabel = (b: BattleState, id: string, label: string): BattleState => ({
+  ...b, tokens: b.tokens.map(t => (t.id === id ? { ...t, label: label.trim().slice(0, 30) || undefined } : t)),
+});
+/** GM drawing: adds a stroke, or replaces the stroke with the same id (it is sent on as it grows). */
+export const upsertStroke = (b: BattleState, s: Drawing): BattleState => {
+  const all = b.drawings ?? [];
+  const next = all.some(d => d.id === s.id) ? all.map(d => (d.id === s.id ? s : d)) : [...all, s];
+  return { ...b, drawings: next.slice(-MAX_STROKES) };
+};
+export const undoStroke = (b: BattleState): BattleState => ({ ...b, drawings: (b.drawings ?? []).slice(0, -1) });
+export const clearDrawings = (b: BattleState): BattleState => ({ ...b, drawings: [] });
 export const setHostile = (b: BattleState, id: string, hostile: boolean): BattleState => ({ ...b, tokens: b.tokens.map(t => (t.id === id ? { ...t, hostile } : t)) });

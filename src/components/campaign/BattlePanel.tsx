@@ -1,10 +1,15 @@
-import type { GetCampaignCharactersOutputType } from '../../lib/api/social';
-import type { BattleState, BattleToken } from '../../utils/battle';
-import { addToken, removeToken, setHostile, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
+import type { GetCampaignCharactersOutputType, MapPing } from '../../lib/api/social';
+import { useState } from 'react';
+import type { BattleState, BattleToken, Drawing } from '../../utils/battle';
+import { addToken, removeToken, setHostile, setLabel, undoStroke, clearDrawings, defaultNpcBase, resizeBattle, resetMovement, stepMapSize, WALK_SPEED, GM_COLORS, PLAYER_COLORS } from '../../utils/battle';
 import BattleMap from './BattleMap';
+import type { MapTool } from './BattleMap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Footprints, Maximize2, Minimize2, Plus, Swords, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Crosshair, Eraser, Footprints, Maximize2, Minimize2, MousePointer2, Pencil, Plus, Swords, Undo2, X } from 'lucide-react';
+
+const DRAW_COLORS = ['#ffffff', '#ef4444', '#facc15', '#22c55e', '#38bdf8'];
 
 type CampaignChar = GetCampaignCharactersOutputType['characters'][0];
 
@@ -13,10 +18,16 @@ const isNpcChar = (c: CampaignChar) => c.characterType === 'gm' || c.isNpc;
 
 /** The battle map for a running combat. Everyone in the campaign sees the map and a player moves their own token; the
  * GM moves every token, adds characters to it, and sets whether each NPC is friendly or hostile. */
-export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd }: {
+export default function BattlePanel({ battle, characters, isGM, viewerId, onChange, onMoveToken, onEnd, pings, onPing, onDrawStroke }: {
   battle: BattleState; characters: CampaignChar[]; isGM: boolean; viewerId: string;
   onChange: (next: BattleState) => void; onMoveToken: (id: string, x: number, y: number) => { x: number; y: number } | void; onEnd: () => void;
+  pings: MapPing[]; onPing: (x: number, y: number) => void; onDrawStroke: (s: Drawing) => void;
 }) {
+  const [tool, setTool] = useState<MapTool>('move');
+  const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
+  const toolButton = (id: MapTool, label: string, Icon: typeof Pencil) => (
+    <Button size="sm" variant={tool === id ? 'default' : 'outline'} className="h-7 text-xs gap-1" onClick={() => setTool(id)} aria-pressed={tool === id}><Icon className="h-3 w-3" />{label}</Button>
+  );
   const off = characters.filter(c => !battle.tokens.some(t => t.id === c.id));
   const bigger = stepMapSize(battle, 1), smaller = stepMapSize(battle, -1);
   const resize = (s: { cols: number; rows: number } | null) => { if (s) onChange(resizeBattle(battle, s.cols, s.rows)); };
@@ -42,9 +53,30 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
         )}
       </div>
 
+      {/* tools: move tokens, draw on the map (GM), or ping a spot for everyone */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {toolButton('move', 'Move', MousePointer2)}
+        {isGM && toolButton('draw', 'Draw', Pencil)}
+        {toolButton('ping', 'Ping', Crosshair)}
+        {isGM && tool === 'draw' && (
+          <>
+            <span className="flex items-center gap-1 ml-1">
+              {DRAW_COLORS.map(c => (
+                <button key={c} type="button" aria-label={`Draw in ${c}`} aria-pressed={drawColor === c} onClick={() => setDrawColor(c)}
+                  className={`h-5 w-5 rounded-full border-2 ${drawColor === c ? 'border-primary' : 'border-border'}`} style={{ background: c }} />
+              ))}
+            </span>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(undoStroke(battle))} disabled={!battle.drawings?.length}><Undo2 className="h-3 w-3" />Undo</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onChange(clearDrawings(battle))} disabled={!battle.drawings?.length}><Eraser className="h-3 w-3" />Clear drawings</Button>
+          </>
+        )}
+        {tool === 'ping' && <span className="text-[11px] text-muted-foreground">Tap the map to ping a spot. Everyone sees it for a few seconds.</span>}
+        {tool === 'draw' && <span className="text-[11px] text-muted-foreground">Drag on the map to draw. Players see it live.</span>}
+      </div>
+
       <BattleMap battle={battle} isGM={isGM} viewerId={viewerId}
         canMove={t => isGM || (t.kind === 'pc' && t.owner === viewerId)}
-        onMove={onMoveToken} />
+        onMove={onMoveToken} tool={tool} drawColor={drawColor} pings={pings} onPing={onPing} onStroke={onDrawStroke} />
 
       {/* legend: the colours mean different things to the GM and to a player */}
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-muted-foreground">
@@ -71,7 +103,15 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
               {battle.tokens.map((t: BattleToken) => (
                 <div key={t.id} className="flex items-center gap-2 py-1.5 border-t border-border/50 first:border-t-0">
                   <Dot color={t.kind === 'pc' ? GM_COLORS.pc : t.hostile ? GM_COLORS.hostile : GM_COLORS.friendly} />
-                  <span className="text-xs font-medium text-foreground flex-1 truncate">{t.name}</span>
+                  <span className="text-xs font-medium text-foreground flex-1 truncate min-w-[3rem]">{t.name}{t.kind === 'npc' && t.num ? <span className="text-muted-foreground font-normal"> #{t.num}</span> : null}</span>
+                  {t.kind === 'npc' && (
+                    <Input key={t.label ?? ''} defaultValue={t.label ?? ''} maxLength={30} aria-label={`Name players see for ${t.name}`}
+                      placeholder={`${defaultNpcBase(t)} ${t.num ?? ''} (players see)`.replace('  ', ' ')}
+                      title="What players call this NPC, in front of its number. Leave it empty to show Enemy or Ally. The real name stays with you."
+                      className="h-6 w-40 text-[11px] px-2"
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      onBlur={e => { const v = e.target.value.trim(); if (v !== (t.label ?? '')) onChange(setLabel(battle, t.id, v)); }} />
+                  )}
                   <span className="text-[10px] text-muted-foreground">{t.kind === 'pc' ? 'Player' : t.hostile ? 'Hostile NPC' : 'Friendly NPC'}</span>
                   {(t.moved ?? 0) > 0 && (
                     <button className={`text-[10px] underline underline-offset-2 ${(t.moved ?? 0) > WALK_SPEED ? 'text-red-400' : 'text-muted-foreground'}`} title="Give this token its walking speed back"
@@ -82,11 +122,12 @@ export default function BattlePanel({ battle, characters, isGM, viewerId, onChan
                       Make {t.hostile ? 'friendly' : 'hostile'}
                     </Button>
                   )}
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onChange(removeToken(battle, t.id))} aria-label={`Remove ${t.name} from the map`}><X className="h-3 w-3" /></Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onChange(removeToken(battle, t.id))} aria-label={`Remove ${t.name} from the map`} title="Take off the map (the character is kept)"><X className="h-3 w-3" /></Button>
                 </div>
               ))}
             </div>
           )}
+          <p className="text-[11px] text-muted-foreground">Players see each NPC as a name plus its number (Enemy 1, Ally 2). Type a name in the box to show it instead of Enemy or Ally; the real name stays with you.</p>
           {off.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px] text-muted-foreground">Add to the map:</span>

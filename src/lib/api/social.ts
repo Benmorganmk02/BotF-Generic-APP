@@ -542,6 +542,22 @@ export function subscribeToCampaign(campaignId: string, onChange: () => void): (
   return () => { supabase.removeChannel(channel); };
 }
 
+/** A ping on the battle map: a marker everyone in the campaign sees for a few seconds. It is not stored anywhere. */
+export interface MapPing { id: string; x: number; y: number; senderId: string; name: string; gm: boolean }
+
+/** Pings travel over a Realtime broadcast channel (nothing is saved). `send` shows nothing locally; the caller shows its own. */
+export function openPingChannel(campaignId: string, onPing: (p: MapPing) => void): { send: (p: MapPing) => void; close: () => void } {
+  const channel: RealtimeChannel = supabase
+    .channel(`campaign-ping:${campaignId}`)
+    .on('broadcast', { event: 'ping' }, (msg: { payload?: Partial<MapPing> }) => {
+      const p = msg?.payload;
+      if (!p || typeof p.id !== 'string' || typeof p.x !== 'number' || typeof p.y !== 'number') return;
+      onPing({ id: p.id, x: p.x, y: p.y, senderId: String(p.senderId ?? ''), name: String(p.name ?? '').slice(0, 30), gm: !!p.gm });
+    })
+    .subscribe();
+  return { send: p => { void channel.send({ type: 'broadcast', event: 'ping', payload: p }); }, close: () => { supabase.removeChannel(channel); } };
+}
+
 /** A player moves their own token. Done through a database function (players cannot write the campaign row), which
  * only changes the position of a token that belongs to the caller. */
 export async function moveMyBattleToken(input: { campaignId: string; tokenId: string; x: number; y: number; cost: number }): Promise<void> {

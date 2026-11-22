@@ -6,8 +6,9 @@ import {
   removeCampaignCharacter, getFriendCharacters, createAndAssignCharacter,
   assignCampaignCharacter, invitePlayerToCampaign, addMyCharacterToCampaign,
   setCampaignCharacterVisibility, getVisibleCampaignCharacters, setCampaignCharacterNpc, duplicateCampaignCharacter, MAX_COPIES,
-  getBattle, saveBattle, subscribeToCampaign, moveMyBattleToken, resetMyBattleMovement,
+  getBattle, saveBattle, subscribeToCampaign, moveMyBattleToken, resetMyBattleMovement, openPingChannel,
 } from '../lib/api/social';
+import type { MapPing } from '../lib/api/social';
 import type { GetCampaignCharactersOutputType, GetFriendRequestsOutputType, VisibleCampaignCharacter } from '../lib/api/social';
 import { VISIBILITY_LEVELS, visibilityLabel } from '../utils/visibility';
 import type { CharacterVisibility } from '../utils/visibility';
@@ -16,7 +17,8 @@ import { saveLocalCharacter } from '../utils/storage';
 import CreateCharacterDialog from '../components/CreateCharacterDialog';
 import NpcControl from '../components/campaign/NpcControl';
 import BattlePanel from '../components/campaign/BattlePanel';
-import { newBattle, addToken, moveToken, limitMove, resetMovement, mergeRemotePositions, WALK_SPEED } from '../utils/battle';
+import { newBattle, addToken, moveToken, limitMove, resetMovement, mergeRemotePositions, upsertStroke, WALK_SPEED } from '../utils/battle';
+import type { Drawing } from '../utils/battle';
 import type { BattleState } from '../utils/battle';
 import { usePersistedState } from '../utils/usePersistedState';
 import type { Character } from '../types/character';
@@ -554,6 +556,10 @@ export default function CampaignPage() {
   const battleRef = useRef<BattleState | null>(null); // always the newest map (a drag started earlier must not write an old copy)
   const applyBattle = (f: (prev: BattleState | null) => BattleState | null) => { const next = f(battleRef.current); battleRef.current = next; setBattleState(next); };
   const lastWrite = useRef(0);
+  // Pings on the map: shown for a few seconds, never saved
+  const [pings, setPings] = useState<MapPing[]>([]);
+  const pingChannel = useRef<{ send: (p: MapPing) => void; close: () => void } | null>(null);
+  const lastPing = useRef(0);
   const movedHere = useRef<Set<string>>(new Set()); // tokens this device moved since the map last matched the server
   const refreshSeq = useRef(0);
   // Which NPC cards are collapsed to just a name (a layout preference, kept on this device)
@@ -618,6 +624,17 @@ export default function CampaignPage() {
       load();
     }
   };
+
+  const showPing = useCallback((p: MapPing) => {
+    setPings(prev => [...prev.filter(k => k.id !== p.id), p]);
+    window.setTimeout(() => setPings(prev => prev.filter(k => k.id !== p.id)), 4500);
+  }, []);
+  useEffect(() => {
+    if (!campaignId || !data) return;
+    const channel = openPingChannel(campaignId, showPing);
+    pingChannel.current = channel;
+    return () => { channel.close(); pingChannel.current = null; };
+  }, [campaignId, !!data, showPing]);
 
   // Live, like the duels, for the GM and the players: the campaign row is pushed over Realtime, so combat starting and
   // every token move shows up as it happens. A slow refresh stays as a safety net if the connection drops. While this
@@ -712,6 +729,27 @@ export default function CampaignPage() {
     if (!m.timer && !m.busy) m.timer = window.setTimeout(flushMove, 150);
     return { x: a.x, y: a.y };
   };
+
+  // Anyone can ping a spot on the map: shown here at once, sent to everyone else over Realtime
+  const sendPing = (x: number, y: number) => {
+    if (Date.now() - lastPing.current < 350) return;
+    lastPing.current = Date.now();
+    const mine = battleRef.current?.tokens.find(t => t.kind === 'pc' && t.owner === user?.id);
+    const p: MapPing = { id: Math.random().toString(36).slice(2, 10), x, y, senderId: user?.id ?? '', name: isGM ? 'GM' : (mine?.name ?? 'Player'), gm: isGM };
+    showPing(p);
+    pingChannel.current?.send(p);
+  };
+  // The GM's drawing: the stroke so far, sent on as it grows
+  const drawStroke = (s: Drawing) => { const cur = battleRef.current; if (cur) updateBattle(upsertStroke(cur, s)); };
+
+  // A character that is no longer in the campaign (removed from the roster) is taken off the map too. It only goes
+  // one way: taking a token off the map never touches the character.
+  useEffect(() => {
+    if (!data?.campaign.isGM || loading || !battle || battle.tokens.length === 0) return;
+    const here = new Set(data.characters.map(c => c.id));
+    if (battle.tokens.every(t => here.has(t.id))) return;
+    updateBattle({ ...battle, tokens: battle.tokens.filter(t => here.has(t.id)) });
+  }, [data, loading, battle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A character's New Turn (or Start Combat) gives its token the full walking speed again
   const resetTokenMovement = (id: string) => {
@@ -848,7 +886,7 @@ export default function CampaignPage() {
       {/* Roster */}
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         {battle?.active && (
-          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} />
+          <BattlePanel battle={battle} characters={data?.characters ?? []} isGM={isGM} viewerId={user?.id ?? ''} onChange={updateBattle} onMoveToken={moveToken_} onEnd={toggleCombat} pings={pings} onPing={sendPing} onDrawStroke={drawStroke} />
         )}
 
         {/* Player: the active character's health, stamina, mana, turns and attacks, without opening the sheet */}
